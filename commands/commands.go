@@ -18,6 +18,7 @@ import (
 	_ "github.com/docker/machine/drivers/google"
 	_ "github.com/docker/machine/drivers/hyperv"
 	_ "github.com/docker/machine/drivers/none"
+	_ "github.com/docker/machine/drivers/oneandone"
 	_ "github.com/docker/machine/drivers/openstack"
 	_ "github.com/docker/machine/drivers/rackspace"
 	_ "github.com/docker/machine/drivers/softlayer"
@@ -234,7 +235,7 @@ var Commands = []cli.Command{
 	{
 		Name:        "ip",
 		Usage:       "Get the IP address of a machine",
-		Description: "Argument(s) are one or more machine names. Will use the active machine if none is provided.",
+		Description: "Argument is a machine name. Will use the active machine if none is provided.",
 		Action:      cmdIp,
 	},
 	{
@@ -342,7 +343,6 @@ func machineCommand(actionName string, host *libmachine.Host, errorChan chan<- e
 		"restart":       host.Restart,
 		"kill":          host.Kill,
 		"upgrade":       host.Upgrade,
-		"ip":            host.PrintIP,
 	}
 
 	log.Debugf("command=%s machine=%s", actionName, host.Name)

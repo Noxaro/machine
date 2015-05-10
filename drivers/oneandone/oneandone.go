@@ -11,6 +11,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"path/filepath"
 	"strconv"
+	oaocs "github.com/jlusiardi/oneandone-cloudserver-api"
 )
 
 const (
@@ -22,6 +23,8 @@ const (
 	maxSsd            = 500
 	stepSsd           = 20
 )
+
+const Endpoint string = ""
 
 type Driver struct {
 	AccessToken    string
@@ -86,6 +89,22 @@ func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
 
 func (d *Driver) Create() error {
 	log.Infof("Creating a new 1&1 CloudServer ...")
+	api := oaocs.New(d.AccessToken, Endpoint)
+		
+	in := oaocs.ServerCreateData{}
+	in.Name = d.MachineName
+	in.Description = d.MachineName + " created by docker machine"
+	in.ApplianceId = "C14988A9ABC34EA64CD5AAC0D33ABCAF"
+	hw := oaocs.Hardware{}
+	in.Hardware = hw
+	hw.CoresPerProcessor = 1
+	hw.Vcores = d.Cores
+	hw.Ram = d.Ram
+	hdd := oaocs.Hdd{}
+	hdd.IsMain = true
+	hdd.Size = d.Ssd
+	hw.Hdds = []oaocs.Hdd{hdd}
+	/*server := */api.CreateServer(in)
 
 	return nil
 }

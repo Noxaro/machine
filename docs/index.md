@@ -74,7 +74,7 @@ In order to run Docker commands on your machines without having to use SSH, make
 sure to install the Docker client as well, e.g.:
 
 ```
-$ curl https://get.docker.com/builds/Darwin/x86_64/docker-latest > /usr/local/bin/docker
+$ curl -L https://get.docker.com/builds/Darwin/x86_64/docker-latest > /usr/local/bin/docker
 ```
 
 ### Windows
@@ -92,13 +92,13 @@ installation.  If you are on a 32-bit installation, please substitute "i386" for
 First, install the Docker client binary:
 
 ```
-curl https://get.docker.com/builds/Windows/x86_64/docker-latest > /bin/docker
+$ curl -L https://get.docker.com/builds/Windows/x86_64/docker-latest.exe > /bin/docker
 ```
 
 Next, install the Docker Machine binary:
 
 ```
-curl https://github.com/docker/machine/releases/docker-machine_windows-amd64.exe > /bin/docker-machine
+$ curl -L https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_windows-amd64.exe > /bin/docker-machine
 ```
 
 Now running `docker-machine` should work.
@@ -141,8 +141,7 @@ INFO[0011] Creating SSH key...
 INFO[0012] Creating VirtualBox VM...
 INFO[0019] Starting VirtualBox VM...
 INFO[0020] Waiting for VM to start...
-INFO[0053] "dev" has been created and is now the active machine.
-INFO[0053] To point your Docker client at it, run this in your shell: eval "$(docker-machine env dev)"
+INFO[0053] To see how to connect Docker to this machine, run: docker-machine env dev"
 ```
 
 You can see the machine you have created by running the `docker-machine ls` command
@@ -151,10 +150,8 @@ again:
 ```
 $ docker-machine ls
 NAME   ACTIVE   DRIVER       STATE     URL                         SWARM
-dev    *        virtualbox   Running   tcp://192.168.99.100:2376
+dev             virtualbox   Running   tcp://192.168.99.100:2376
 ```
-
-The `*` next to `dev` indicates that it is the active host.
 
 Next, as noted in the output of the `docker-machine create` command, we have to tell
 Docker to talk to that machine.  You can do this with the `docker-machine env`
@@ -164,6 +161,11 @@ command.  For example,
 $ eval "$(docker-machine env dev)"
 $ docker ps
 ```
+
+> **Note**: If you are using `fish`, or a Windows shell such as
+> Powershell/`cmd.exe` the above method will not work as described.  Instead,
+> see [the `env` command's documentation](https://docs.docker.com/machine/#env)
+> to learn how to set the environment variables for your shell.
 
 This will set environment variables that the Docker client will read which specify
 the TLS settings. Note that you will need to do that every time you open a new tab or
@@ -243,17 +245,8 @@ run `docker-machine create` again.  All created machines will appear in the
 output of `docker-machine ls`.
 
 If you are finished using a host for the time being, you can stop it with
-`docker-machine stop` and later start it again with `docker-machine start`:
-
-```
-$ docker-machine stop
-$ docker-machine start
-```
-
-If they aren't passed any arguments, commands such as `docker-machine stop` will run
-against the active host (in this case, the VirtualBox VM).  You can also specify
-a host to run a command against as an argument.  For instance, you could also
-have written:
+`docker-machine stop` and later start it again with `docker-machine start`.
+Make sure to specify the machine name as an argument:
 
 ```
 $ docker-machine stop dev
@@ -300,8 +293,8 @@ $ docker-machine create \
 INFO[0000] Creating SSH key...
 INFO[0000] Creating Digital Ocean droplet...
 INFO[0002] Waiting for SSH...
-INFO[0085] "staging" has been created and is now the active machine
-INFO[0085] To point your Docker client at it, run this in your shell: eval "$(docker-machine env staging)"
+INFO[0085] "staging" has been created.
+INFO[0085] To see how to connect Docker to this machine, run: docker-machine env staging"
 ```
 
 For convenience, `docker-machine` will use sensible defaults for choosing
@@ -320,26 +313,22 @@ Docker will be installed on the remote machine and the daemon will be configured
 to accept remote connections over TCP using TLS for authentication.  Once this
 is finished, the host is ready for connection.
 
-And then from this point, the remote host behaves much like the local host we
-created in the last section. If we look at `docker-machine`, we’ll see it is now
-the active host:
+To prepare the Docker client to send commands to the remote server we have
+created, we can use the subshell method again:
 
 ```
-$ docker-machine active dev
+$ eval "$(docker-machine env staging)"
+```
+
+From this point, the remote host behaves much like the local host we created in
+the last section.  If we look at `docker-machine ls`, we'll see it is now the
+"active" host, indicated by an asterisk (`*`) in that column:
+
+```
 $ docker-machine ls
 NAME      ACTIVE   DRIVER         STATE     URL
 dev                virtualbox     Running   tcp://192.168.99.103:2376
 staging   *        digitalocean   Running   tcp://104.236.50.118:2376
-```
-
-To select an active host, you can use the `docker-machine active` command.
-
-```
-$ docker-machine active dev
-$ docker-machine ls
-NAME      ACTIVE   DRIVER         STATE     URL
-dev       *        virtualbox     Running   tcp://192.168.99.103:2376
-staging            digitalocean   Running   tcp://104.236.50.118:2376
 ```
 
 To remove a host and all of its containers and images, use `docker-machine rm`:
@@ -384,6 +373,7 @@ Load the Machine configuration into your shell:
 ```
 $ eval "$(docker-machine env local)"
 ```
+
 Then run generate the token using the Swarm Docker image:
 
 ```
@@ -451,18 +441,18 @@ Nodes: 1
 
 #### active
 
-Get or set the active machine.
+See which machine is "active" (a machine is considered active if the
+`DOCKER_HOST` environment variable points to it).
 
 ```
 $ docker-machine ls
 NAME      ACTIVE   DRIVER         STATE     URL
 dev                virtualbox     Running   tcp://192.168.99.103:2376
 staging   *        digitalocean   Running   tcp://104.236.50.118:2376
-$ docker-machine active dev
-$ docker-machine ls
-NAME      ACTIVE   DRIVER         STATE     URL
-dev       *        virtualbox     Running   tcp://192.168.99.103:2376
-staging            digitalocean   Running   tcp://104.236.50.118:2376
+$ echo $DOCKER_HOST
+tcp://104.236.50.118:2376
+$ docker-machine active
+staging
 ```
 
 #### create
@@ -476,8 +466,127 @@ INFO[0000] Creating SSH key...
 INFO[0000] Creating VirtualBox VM...
 INFO[0007] Starting VirtualBox VM...
 INFO[0007] Waiting for VM to start...
-INFO[0038] "dev" has been created and is now the active machine.
-INFO[0038] To point your Docker client at it, run this in your shell: eval "$(docker-machine env dev)"
+INFO[0038] To see how to connect Docker to this machine, run: docker-machine env dev
+```
+
+##### Filtering create flags by driver in the help text
+
+You may notice that the `docker-machine create` command has a lot of flags due
+to the huge plethora of provider-specific options which are available.
+
+```
+$ docker-machine create -h | wc -l
+145
+```
+
+While it is great to have access to all this information, sometimes you simply
+want to get a peek at the subset of flags which are applicable to the driver you
+are working with.  To that extent, specifying an argument to the `-d` flag will
+filter the create flags displayed in the help text to only what is applicable to
+that provider:
+
+```
+$ docker-machine create -d virtualbox
+Usage: docker-machine create [OPTIONS] [arg...]
+
+Create a machine
+
+Options:
+   --virtualbox-boot2docker-url                                                                         The URL of the boot2docker image. Defaults to the latest available version [$VIRTUALBOX_BOOT2DOCKER_URL]
+   --virtualbox-cpu-count "1"                                                                           number of CPUs for the machine (-1 to use the number of CPUs available) [$VIRTUALBOX_CPU_COUNT]
+   --virtualbox-disk-size "20000"                                                                       Size of disk for host in MB [$VIRTUALBOX_DISK_SIZE]
+   --virtualbox-import-boot2docker-vm                                                                   The name of a Boot2Docker VM to import
+   --virtualbox-memory "1024"                                                                           Size of memory for host in MB [$VIRTUALBOX_MEMORY_SIZE]
+   --driver, -d "none"                                                                                  Driver to create machine with. Available drivers: amazonec2, azure, digitalocean, exoscale, google, none, openstack, rackspace, softlayer, virtualbox, vmwarefusion, vmwarevcloudair, vmwarevsphere
+   --engine-flag [--engine-flag option --engine-flag option]                                            Specify arbitrary flags to include with the created engine in the form flag=value
+   --engine-insecure-registry [--engine-insecure-registry option --engine-insecure-registry option]     Specify insecure registries to allow with the created engine
+   --engine-registry-mirror [--engine-registry-mirror option --engine-registry-mirror option]           Specify registry mirrors to use
+   --engine-label [--engine-label option --engine-label option]                                         Specify labels for the created engine
+   --engine-storage-driver "aufs"                                                                       Specify a storage driver to use with the engine
+   --swarm                                                                                              Configure Machine with Swarm
+   --swarm-master                                                                                       Configure Machine to be a Swarm master
+   --swarm-discovery                                                                                    Discovery service to use with Swarm
+   --swarm-host "tcp://0.0.0.0:3376"                                                                    ip/socket to listen on for Swarm master
+   --swarm-addr                                                                                         addr to advertise for Swarm (default: detect and use the machine IP)
+```
+
+##### Specifying configuration options for the created Docker engine
+
+As part of the process of creation, Docker Machine installs Docker and
+configures it with some sensible defaults.  For instance, it allows connection
+from the outside world over TCP with TLS-based encryption and defaults to AUFS
+as the [storage
+driver](https://docs.docker.com/reference/commandline/cli/#daemon-storage-driver-option)
+when available.
+
+There are several cases where the user might want to set options for the created
+Docker engine (also known as the Docker _daemon_) themselves.  For example, they
+may want to allow connection to a [registry](https://docs.docker.com/registry/)
+that they are running themselves using the `--insecure-registry` flag for the
+daemon.  Docker Machine supports the configuration of such options for the
+created engines via the `create` command flags which begin with `--engine`.
+
+Note that Docker Machine simply sets the configured parameters on the daemon
+and does not set up any of the "dependencies" for you.  For instance, if you
+specify that the created daemon should use `btrfs` as a storage driver, you
+still must ensure that the proper dependencies are installed, the BTRFS
+filesystem has been created, and so on.
+
+The following is an example usage:
+
+```
+$ docker-machine create -d virtualbox \
+    --engine-label foo=bar \
+    --engine-label spam=eggs \
+    --engine-storage-driver devicemapper \
+    --engine-insecure-registry registry.myco.com \
+    foobarmachine
+```
+
+This will create a virtual machine running locally in Virtualbox which uses the
+`devicemapper` storage backend, has the key-value pairs `foo=bar` and
+`spam=eggs` as labels on the engine, and allows pushing / pulling from the
+insecure registry located at `registry.myco.com`.  You can verify much of this
+by inspecting the output of `docker info`:
+
+```
+$ eval $(docker-machine env foobarmachine)
+$ docker version
+Containers: 0
+Images: 0
+Storage Driver: devicemapper
+...
+Name: foobarmachine
+...
+Labels:
+ foo=bar
+ spam=eggs
+ provider=virtualbox
+```
+
+The supported flags are as follows:
+
+- `--engine-insecure-registry`: Specify [insecure registries](https://docs.docker.com/reference/commandline/cli/#insecure-registries) to allow with the created engine
+- `--engine-registry-mirror`: Specify [registry mirrors](https://github.com/docker/docker/blob/master/docs/sources/articles/registry_mirror.md) to use
+- `--engine-label`: Specify [labels](https://docs.docker.com/userguide/labels-custom-metadata/#daemon-labels) for the created engine
+- `--engine-storage-driver`: Specify a [storage driver](https://docs.docker.com/reference/commandline/cli/#daemon-storage-driver-option) to use with the engine
+
+If the engine supports specifying the flag multiple times (such as with
+`--label`), then so does Docker Machine.
+
+In addition to this subset of daemon flags which are directly supported, Docker
+Machine also supports an additional flag, `--engine-flag`, which can be used to
+specify arbitrary daemon options with the syntax `--engine-flag
+flagname=value`.  For example, to specify that the daemon should use `8.8.8.8`
+as the DNS server for all containers, and always use the `syslog` [log
+driver](https://docs.docker.com/reference/run/#logging-drivers-log-driver) you
+could run the following create command:
+
+```
+$ docker-machine create -d virtualbox \
+    --engine-flag dns=8.8.8.8 \
+    --engine-flag log-driver=syslog \
+    gdns
 ```
 
 #### config
@@ -495,8 +604,8 @@ Set environment variables to dictate that `docker` should run a command against
 a particular machine.
 
 `docker-machine env machinename` will print out `export` commands which can be
-run in a subshell.  Running `docker-machine env -u` will print
-`unset` commands which reverse this effect.
+run in a subshell.  Running `docker-machine env -u` will print `unset` commands
+which reverse this effect.
 
 ```
 $ env | grep DOCKER
@@ -511,9 +620,75 @@ $ env | grep DOCKER
 $ # The environment variables have been unset.
 ```
 
+The output described above is intended for the shells `bash` and `zsh` (if
+you're not sure which shell you're using, there's a very good possibility that
+it's `bash`).  However, these are not the only shells which Docker Machine
+supports.
+
+If you are using `fish` and the `SHELL` environment variable is correctly set to
+the path where `fish` is located, `docker-machine env name` will print out the
+values in the format which `fish` expects:
+
+```
+set -x DOCKER_TLS_VERIFY 1;
+set -x DOCKER_CERT_PATH "/Users/nathanleclaire/.docker/machine/machines/overlay";
+set -x DOCKER_HOST tcp://192.168.99.102:2376;
+# Run this command to configure your shell: eval (docker-machine env overlay)
+```
+
+If you are on Windows and using Powershell or `cmd.exe`, `docker-machine env`
+cannot detect your shell automatically, but it does have support for these
+shells.  In order to use them, specify which shell you would like to print the
+options for using the `--shell` flag for `docker-machine env`.
+
+For Powershell:
+
+```
+$ docker-machine.exe env --shell powershell dev
+$Env:DOCKER_TLS_VERIFY = "1"
+$Env:DOCKER_HOST = "tcp://192.168.99.101:2376"
+$Env:DOCKER_CERT_PATH = "C:\Users\captain\.docker\machine\machines\dev"
+# Run this command to configure your shell: docker-machine.exe env --shell=powershell | Invoke-Expression
+```
+
+For `cmd.exe`:
+
+```
+$ docker-machine.exe env --shell cmd dev
+set DOCKER_TLS_VERIFY=1
+set DOCKER_HOST=tcp://192.168.99.101:2376
+set DOCKER_CERT_PATH=C:\Users\captain\.docker\machine\machines\dev
+# Run this command to configure your shell: copy and paste the above values into your command prompt
+```
+
 #### inspect
 
-Inspect information about a machine.
+```
+Usage: docker-machine inspect [OPTIONS] [arg...]
+
+Inspect information about a machine
+
+Description:
+   Argument is a machine name.
+
+Options:
+   --format, -f 	Format the output using the given go template.
+```
+
+By default, this will render information about a machine as JSON. If a format is
+specified, the given template will be executed for each result.
+
+Go's [text/template](http://golang.org/pkg/text/template/) package
+describes all the details of the format.
+
+In addition to the `text/template` syntax, there are some additional functions,
+`json` and `prettyjson`, which can be used to format the output as JSON (documented below).
+
+##### Examples
+
+**List all the details of a machine:**
+
+This is the default usage of `inspect`.
 
 ```
 $ docker-machine inspect dev
@@ -524,8 +699,54 @@ $ docker-machine inspect dev
         "SSHPort": 55834,
         "Memory": 1024,
         "DiskSize": 20000,
-        "Boot2DockerURL": ""
-    }
+        "Boot2DockerURL": "",
+        "IPAddress": "192.168.5.99"
+    },
+    ...
+}
+```
+
+**Get a machine's IP address:**
+
+For the most part, you can pick out any field from the JSON in a fairly
+straightforward manner.
+
+```
+$ docker-machine inspect --format='{{.Driver.IPAddress}}' dev
+192.168.5.99
+```
+
+**Formatting details:**
+
+If you want a subset of information formatted as JSON, you can use the `json`
+function in the template.
+
+```
+$ docker-machine inspect --format='{{json .Driver}}' dev-fusion
+{"Boot2DockerURL":"","CPUS":8,"CPUs":8,"CaCertPath":"/Users/hairyhenderson/.docker/machine/certs/ca.pem","DiskSize":20000,"IPAddress":"172.16.62.129","ISO":"/Users/hairyhenderson/.docker/machine/machines/dev-fusion/boot2docker-1.5.0-GH747.iso","MachineName":"dev-fusion","Memory":1024,"PrivateKeyPath":"/Users/hairyhenderson/.docker/machine/certs/ca-key.pem","SSHPort":22,"SSHUser":"docker","SwarmDiscovery":"","SwarmHost":"tcp://0.0.0.0:3376","SwarmMaster":false}
+```
+
+While this is usable, it's not very human-readable. For this reason, there is
+`prettyjson`:
+
+```
+$ docker-machine inspect --format='{{prettyjson .Driver}}' dev-fusion
+{
+    "Boot2DockerURL": "",
+    "CPUS": 8,
+    "CPUs": 8,
+    "CaCertPath": "/Users/hairyhenderson/.docker/machine/certs/ca.pem",
+    "DiskSize": 20000,
+    "IPAddress": "172.16.62.129",
+    "ISO": "/Users/hairyhenderson/.docker/machine/machines/dev-fusion/boot2docker-1.5.0-GH747.iso",
+    "MachineName": "dev-fusion",
+    "Memory": 1024,
+    "PrivateKeyPath": "/Users/hairyhenderson/.docker/machine/certs/ca-key.pem",
+    "SSHPort": 22,
+    "SSHUser": "docker",
+    "SwarmDiscovery": "",
+    "SwarmHost": "tcp://0.0.0.0:3376",
+    "SwarmMaster": false
 }
 ```
 
@@ -728,7 +949,7 @@ Create machines on [Amazon Web Services](http://aws.amazon.com).  You will need 
 Options:
 
  - `--amazonec2-access-key`: **required** Your access key id for the Amazon Web Services API.
- - `--amazonec2-ami`: The AMI ID of the instance to use  Default: `ami-4ae27e22`
+ - `--amazonec2-ami`: The AMI ID of the instance to use  Default: `ami-cc3b3ea4`
  - `--amazonec2-instance-type`: The instance type to run.  Default: `t2.micro`
  - `--amazonec2-iam-instance-profile`: The AWS IAM role name to be used as the instance profile
  - `--amazonec2-region`: The region to use when launching the instance.  Default: `us-east-1`
@@ -739,22 +960,23 @@ Options:
  - `--amazonec2-subnet-id`: AWS VPC subnet id
  - `--amazonec2-vpc-id`: **required** Your VPC ID to launch the instance in.
  - `--amazonec2-zone`: The AWS zone launch the instance in (i.e. one of a,b,c,d,e). Default: `a`
+ - `--amazonec2-private-address-only`: Use the private IP address only
 
 By default, the Amazon EC2 driver will use a daily image of Ubuntu 14.04 LTS.
 
 | Region        | AMI ID     |
 |:--------------|:-----------|
-|ap-northeast-1 |ami-44f1e245|
-|ap-southeast-1 |ami-f95875ab|
-|ap-southeast-2 |ami-890b62b3|
-|cn-north-1     |ami-fe7ae8c7|
-|eu-west-1      |ami-823686f5|
-|eu-central-1   |ami-ac1524b1|
-|sa-east-1      |ami-c770c1da|
-|us-east-1      |ami-4ae27e22|
-|us-west-1      |ami-d1180894|
-|us-west-2      |ami-898dd9b9|
-|us-gov-west-1  |ami-cf5630ec|
+|ap-northeast-1 |ami-fc11d4fc|
+|ap-southeast-1 |ami-7854692a|
+|ap-southeast-2 |ami-c5611cff|
+|cn-north-1     |ami-7cd84545|
+|eu-west-1      |ami-2d96f65a|
+|eu-central-1   |ami-3cdae621|
+|sa-east-1      |ami-71b2376c|
+|us-east-1      |ami-cc3b3ea4|
+|us-west-1      |ami-017f9d45|
+|us-west-2      |ami-55526765|
+|us-gov-west-1  |ami-8ffa9bac|
 
 #### Digital Ocean
 
@@ -777,6 +999,22 @@ Options:
 
 The DigitalOcean driver will use `ubuntu-14-04-x64` as the default image.
 
+#### Generic
+Create machines using an existing VM/Host with SSH.
+
+This is useful if you are using a provider that Machine does not support
+directly or if you would like to import an existing host to allow Docker
+Machine to manage.
+
+Options:
+
+ - `--generic-ip-address`: IP Address of host
+ - `--generic-ssh-user`: SSH username used to connect (default: `root`)
+ - `--generic-ssh-key`: Path to the SSH user private key
+ - `--generic-ssh-port`: Port to use for SSH (default: `22`)
+
+> Note: you must use a base Operating System supported by Machine.
+
 #### Google Compute Engine
 Create machines on [Google Compute Engine](https://cloud.google.com/compute/).  You will need a Google account and project name.  See https://cloud.google.com/compute/docs/projects for details on projects.
 
@@ -787,10 +1025,13 @@ Options:
  - `--google-zone`: The zone to launch the instance.  Default: `us-central1-a`
  - `--google-machine-type`: The type of instance.  Default: `f1-micro`
  - `--google-username`: The username to use for the instance.  Default: `docker-user`
- - `--google-instance-name`: The name of the instance.  Default: `docker-machine`
  - `--google-project`: The name of your project to use when launching the instance.
-
-The GCE driver will use the `ubuntu-1404-trusty-v20150128` instance type unless otherwise specified.
+ - `--google-auth-token`: Your oAuth token for the Google Cloud API.
+ - `--google-scopes`: The scopes for OAuth 2.0 to Access Google APIs. See [Google Compute Engine Doc](https://cloud.google.com/storage/docs/authentication).
+ - `--google-disk-size`: The disk size of instance. Default: `10`
+ - `--google-disk-type`: The disk type of instance. Default: `pd-standard`
+ 
+The GCE driver will use the `ubuntu-1404-trusty-v20150316` instance type unless otherwise specified.
 
 #### IBM Softlayer
 
@@ -954,7 +1195,7 @@ Options:
  - `--virtualbox-boot2docker-url`: The URL of the boot2docker image. Defaults to the latest available version.
  - `--virtualbox-disk-size`: Size of disk for the host in MB. Default: `20000`
  - `--virtualbox-memory`: Size of memory for the host in MB. Default: `1024`
- - `--virtualbox-cpu-count`: Number of CPUs to use to create the VM. Defaults to number of available CPUs.
+ - `--virtualbox-cpu-count`: Number of CPUs to use to create the VM. Defaults to single CPU.
 
 The `--virtualbox-boot2docker-url` flag takes a few different forms.  By
 default, if no value is specified for this flag, Machine will check locally for
@@ -1039,6 +1280,21 @@ Options:
  - `--vmwarevsphere-vcenter`: IP/hostname for vCenter (or ESXi if connecting directly to a single host).
 
 The VMware vSphere driver uses the latest boot2docker image.
+
+#### exoscale
+Create machines on [exoscale](https://www.exoscale.ch/).
+
+Get your API key and API secret key from [API details](https://portal.exoscale.ch/account/api) and pass them to `machine create` with the `--exoscale-api-key` and `--exoscale-api-secret-key` options.
+
+Options:
+
+ - `--exoscale-api-key`: Your API key.
+ - `--exoscale-api-secret-key`: Your API secret key.
+ - `--exoscale-instance-profile`: Instance profile. Default: `small`.
+ - `--exoscale-disk-size`: Disk size for the host in GB. Default: `50`.
+ - `--exoscale-security-group`: Security group. It will be created if it doesn't exist. Default: `docker-machine`.
+
+If a custom security group is provided, you need to ensure that you allow TCP port 2376 in an ingress rule.
 
 ## Release Notes
 

@@ -1,3 +1,5 @@
+# Migrate from Boot2Docker CLI to Docker Machine
+
 This guide explains migrating from the Boot2Docker CLI to Docker Machine.
 
 This guide assumes basic knowledge of the Boot2Docker CLI and Docker Machine.  If you are not familiar, please review those docs prior to migrating.
@@ -61,4 +63,4 @@ When migrating a Boot2Docker VM to Docker Machine the Boot2Docker VM is left int
 
 ** `ls` will show all machines including their status
 
-** the `url` command reports the entire Docker URL including the IP / Hostname
+*** the `url` command reports the entire Docker URL including the IP / Hostname

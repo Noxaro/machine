@@ -120,6 +120,10 @@ func (h *Host) Create(name string) error {
 
 	// TODO: Not really a fan of just checking "none" here.
 	if h.Driver.DriverName() != "none" {
+		if err := utils.WaitFor(drivers.MachineInState(h.Driver, state.Running)); err != nil {
+			return err
+		}
+
 		if err := WaitForSSH(h); err != nil {
 			return err
 		}
@@ -137,26 +141,30 @@ func (h *Host) Create(name string) error {
 	return nil
 }
 
-func (h *Host) RunSSHCommand(command string) (ssh.Output, error) {
+func (h *Host) RunSSHCommand(command string) (string, error) {
 	return drivers.RunSSHCommandFromDriver(h.Driver, command)
 }
 
-func (h *Host) CreateSSHShell() error {
+func (h *Host) CreateSSHClient() (ssh.Client, error) {
 	addr, err := h.Driver.GetSSHHostname()
 	if err != nil {
-		return err
+		return ssh.ExternalClient{}, err
 	}
 
 	port, err := h.Driver.GetSSHPort()
 	if err != nil {
-		return err
+		return ssh.ExternalClient{}, err
 	}
 
 	auth := &ssh.Auth{
 		Keys: []string{h.Driver.GetSSHKeyPath()},
 	}
 
-	client, err := ssh.NewClient(h.Driver.GetSSHUsername(), addr, port, auth)
+	return ssh.NewClient(h.Driver.GetSSHUsername(), addr, port, auth)
+}
+
+func (h *Host) CreateSSHShell() error {
+	client, err := h.CreateSSHClient()
 	if err != nil {
 		return err
 	}
@@ -312,12 +320,21 @@ func (h *Host) LoadConfig() error {
 }
 
 func (h *Host) ConfigureAuth() error {
+	if err := h.LoadConfig(); err != nil {
+		return err
+	}
+
 	provisioner, err := provision.DetectProvisioner(h.Driver)
 	if err != nil {
 		return err
 	}
 
-	if err := provision.ConfigureAuth(provisioner); err != nil {
+	// TODO: This is kind of a hack (or is it?  I'm not really sure until
+	// we have more clearly defined outlook on what the responsibilities
+	// and modularity of the provisioners should be).
+	//
+	// Call provision to re-provision the certs properly.
+	if err := provisioner.Provision(swarm.SwarmOptions{}, *h.HostOptions.AuthOptions, *h.HostOptions.EngineOptions); err != nil {
 		return err
 	}
 

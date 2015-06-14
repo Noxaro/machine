@@ -12,8 +12,8 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/log"
-	"github.com/docker/machine/provider"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
 	"github.com/pyr/egoscale/src/egoscale"
 )
 
@@ -96,11 +96,6 @@ func GetCreateFlags() []cli.Flag {
 			Value:  "ch-gva-2",
 			Usage:  "exoscale availibility zone",
 		},
-		cli.StringFlag{
-			EnvVar: "EXOSCALE_KEYPAIR",
-			Name:   "exoscale-keypair",
-			Usage:  "exoscale keypair name",
-		},
 	}
 }
 
@@ -136,10 +131,6 @@ func (d *Driver) GetSSHUsername() string {
 	return "ubuntu"
 }
 
-func (d *Driver) GetProviderType() provider.ProviderType {
-	return provider.Remote
-}
-
 func (d *Driver) DriverName() string {
 	return "exoscale"
 }
@@ -153,7 +144,6 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Image = flags.String("exoscale-image")
 	d.SecurityGroup = flags.String("exoscale-security-group")
 	d.AvailabilityZone = flags.String("exoscale-availability-zone")
-	d.KeyPair = flags.String("exoscale-keypair")
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
@@ -275,6 +265,12 @@ func (d *Driver) Create() error {
 			{
 				SecurityGroupId: "",
 				Cidr:            "0.0.0.0/0",
+				Protocol:        "TCP",
+				Port:            3376,
+			},
+			{
+				SecurityGroupId: "",
+				Cidr:            "0.0.0.0/0",
 				Protocol:        "ICMP",
 				IcmpType:        8,
 				IcmpCode:        0,
@@ -290,18 +286,17 @@ func (d *Driver) Create() error {
 	}
 	log.Debugf("Security group %v = %s", d.SecurityGroup, sg)
 
-	if d.KeyPair == "" {
-		log.Infof("Generate an SSH keypair...")
-		kpresp, err := client.CreateKeypair(d.MachineName)
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(d.GetSSHKeyPath(), []byte(kpresp.Privatekey), 0600)
-		if err != nil {
-			return err
-		}
-		d.KeyPair = d.MachineName
+	log.Infof("Generate an SSH keypair...")
+	keypairName := fmt.Sprintf("docker-machine-%s", d.MachineName)
+	kpresp, err := client.CreateKeypair(keypairName)
+	if err != nil {
+		return err
 	}
+	err = ioutil.WriteFile(d.GetSSHKeyPath(), []byte(kpresp.Privatekey), 0600)
+	if err != nil {
+		return err
+	}
+	d.KeyPair = keypairName
 
 	log.Infof("Spawn exoscale host...")
 
@@ -352,8 +347,7 @@ func (d *Driver) Start() error {
 	if err != nil {
 		return err
 	}
-	_, err = d.waitForVM(client, svmresp)
-	if err != nil {
+	if err = d.waitForJob(client, svmresp); err != nil {
 		return err
 	}
 	return nil
@@ -374,8 +368,7 @@ func (d *Driver) Stop() error {
 	if err != nil {
 		return err
 	}
-	_, err = d.waitForVM(client, svmresp)
-	if err != nil {
+	if err = d.waitForJob(client, svmresp); err != nil {
 		return err
 	}
 	return nil
@@ -383,12 +376,18 @@ func (d *Driver) Stop() error {
 
 func (d *Driver) Remove() error {
 	client := egoscale.NewClient(d.URL, d.ApiKey, d.ApiSecretKey)
+
+	// Destroy the SSH key
+	if _, err := client.DeleteKeypair(d.KeyPair); err != nil {
+		return err
+	}
+
+	// Destroy the virtual machine
 	dvmresp, err := client.DestroyVirtualMachine(d.Id)
 	if err != nil {
 		return err
 	}
-	_, err = d.waitForVM(client, dvmresp)
-	if err != nil {
+	if err = d.waitForJob(client, dvmresp); err != nil {
 		return err
 	}
 	return nil
@@ -408,8 +407,7 @@ func (d *Driver) Restart() error {
 	if err != nil {
 		return err
 	}
-	_, err = d.waitForVM(client, svmresp)
-	if err != nil {
+	if err = d.waitForJob(client, svmresp); err != nil {
 		return err
 	}
 
@@ -420,25 +418,36 @@ func (d *Driver) Kill() error {
 	return d.Stop()
 }
 
-func (d *Driver) waitForVM(client *egoscale.Client, jobid string) (*egoscale.DeployVirtualMachineResponse, error) {
-	log.Infof("Waiting for VM...")
-	maxRepeats := 60
-	i := 0
-	var resp *egoscale.QueryAsyncJobResultResponse
-	var err error
-	for ; i < maxRepeats; i++ {
-		resp, err = client.PollAsyncJob(jobid)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.Jobstatus == 1 {
-			break
-		}
-		time.Sleep(2 * time.Second)
+func (d *Driver) jobIsDone(client *egoscale.Client, jobid string) (bool, error) {
+	resp, err := client.PollAsyncJob(jobid)
+	if err != nil {
+		return true, err
 	}
-	if i == maxRepeats {
-		return nil, fmt.Errorf("Timeout while waiting for VM")
+	switch resp.Jobstatus {
+	case 0: // Job is still in progress
+	case 1: // Job has successfully completed
+		return true, nil
+	case 2: // Job has failed to complete
+		return true, fmt.Errorf("Operation failed to complete")
+	default: // Some other code
+	}
+	return false, nil
+}
+
+func (d *Driver) waitForJob(client *egoscale.Client, jobid string) error {
+	log.Infof("Waiting for job to complete...")
+	return utils.WaitForSpecificOrError(func() (bool, error) {
+		return d.jobIsDone(client, jobid)
+	}, 60, 2*time.Second)
+}
+
+func (d *Driver) waitForVM(client *egoscale.Client, jobid string) (*egoscale.DeployVirtualMachineResponse, error) {
+	if err := d.waitForJob(client, jobid); err != nil {
+		return nil, err
+	}
+	resp, err := client.PollAsyncJob(jobid)
+	if err != nil {
+		return nil, err
 	}
 	vm, err := client.AsyncToVirtualMachine(*resp)
 	if err != nil {

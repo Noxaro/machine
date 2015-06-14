@@ -3,9 +3,11 @@ package virtualbox
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -19,14 +21,18 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/log"
-	"github.com/docker/machine/provider"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 	"github.com/docker/machine/utils"
 )
 
 const (
-	isoFilename = "boot2docker.iso"
+	isoFilename         = "boot2docker.iso"
+	defaultHostOnlyCIDR = "192.168.99.1/24"
+)
+
+var (
+	ErrUnableToGenerateRandomIP = errors.New("unable to generate random IP")
 )
 
 type Driver struct {
@@ -45,6 +51,7 @@ type Driver struct {
 	SwarmDiscovery      string
 	storePath           string
 	Boot2DockerImportVM string
+	HostOnlyCIDR        string
 }
 
 func init() {
@@ -87,6 +94,12 @@ func GetCreateFlags() []cli.Flag {
 			Usage: "The name of a Boot2Docker VM to import",
 			Value: "",
 		},
+		cli.StringFlag{
+			Name:   "virtualbox-hostonly-cidr",
+			Usage:  "Specify the Host Only CIDR",
+			Value:  defaultHostOnlyCIDR,
+			EnvVar: "VIRTUALBOX_HOSTONLY_CIDR",
+		},
 	}
 }
 
@@ -126,10 +139,6 @@ func (d *Driver) GetSSHUsername() string {
 	return d.SSHUser
 }
 
-func (d *Driver) GetProviderType() provider.ProviderType {
-	return provider.Local
-}
-
 func (d *Driver) DriverName() string {
 	return "virtualbox"
 }
@@ -155,6 +164,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmDiscovery = flags.String("swarm-discovery")
 	d.SSHUser = "docker"
 	d.Boot2DockerImportVM = flags.String("virtualbox-import-boot2docker-vm")
+	d.HostOnlyCIDR = flags.String("virtualbox-hostonly-cidr")
 
 	return nil
 }
@@ -273,25 +283,12 @@ func (d *Driver) Create() error {
 
 	if err := vbm("modifyvm", d.MachineName,
 		"--nic1", "nat",
-		"--nictype1", "virtio",
+		"--nictype1", "82540EM",
 		"--cableconnected1", "on"); err != nil {
 		return err
 	}
 
-	hostOnlyNetwork, err := getOrCreateHostOnlyNetwork(
-		net.ParseIP("192.168.99.1"),
-		net.IPv4Mask(255, 255, 255, 0),
-		net.ParseIP("192.168.99.2"),
-		net.ParseIP("192.168.99.100"),
-		net.ParseIP("192.168.99.254"))
-	if err != nil {
-		return err
-	}
-	if err := vbm("modifyvm", d.MachineName,
-		"--nic2", "hostonly",
-		"--nictype2", "virtio",
-		"--hostonlyadapter2", hostOnlyNetwork.Name,
-		"--cableconnected2", "on"); err != nil {
+	if err := d.setupHostOnlyNetwork(d.MachineName); err != nil {
 		return err
 	}
 
@@ -374,6 +371,11 @@ func (d *Driver) Create() error {
 func (d *Driver) Start() error {
 	s, err := d.GetState()
 	if err != nil {
+		return err
+	}
+
+	// check network to re-create if needed
+	if err := d.setupHostOnlyNetwork(d.MachineName); err != nil {
 		return err
 	}
 
@@ -503,20 +505,15 @@ func (d *Driver) GetIP() (string, error) {
 	if s != state.Running {
 		return "", drivers.ErrHostIsNotRunning
 	}
+
 	output, err := drivers.RunSSHCommandFromDriver(d, "ip addr show dev eth1")
 	if err != nil {
 		return "", err
 	}
 
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(output.Stdout); err != nil {
-		return "", err
-	}
-
-	out := buf.String()
-	log.Debugf("SSH returned: %s\nEND SSH\n", out)
+	log.Debugf("SSH returned: %s\nEND SSH\n", output)
 	// parse to find: inet 192.168.59.103/24 brd 192.168.59.255 scope global eth1
-	lines := strings.Split(out, "\n")
+	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		vals := strings.Split(strings.TrimSpace(line), " ")
 		if len(vals) >= 2 && vals[0] == "inet" {
@@ -524,7 +521,7 @@ func (d *Driver) GetIP() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("No IP address found %s", out)
+	return "", fmt.Errorf("No IP address found %s", output)
 }
 
 func (d *Driver) publicSSHKeyPath() string {
@@ -580,6 +577,56 @@ func (d *Driver) generateDiskImage(size int) error {
 	}
 	raw := bytes.NewReader(buf.Bytes())
 	return createDiskImage(d.diskPath(), size, raw)
+}
+
+func (d *Driver) setupHostOnlyNetwork(machineName string) error {
+	hostOnlyCIDR := d.HostOnlyCIDR
+
+	// This is to assist in migrating from version 0.2 to 0.3 format
+	// it should be removed in a later release
+	if hostOnlyCIDR == "" {
+		hostOnlyCIDR = defaultHostOnlyCIDR
+	}
+
+	ip, network, err := net.ParseCIDR(hostOnlyCIDR)
+
+	if err != nil {
+		return err
+	}
+
+	nAddr := network.IP.To4()
+
+	dhcpAddr, err := getRandomIPinSubnet(network.IP)
+	if err != nil {
+		return err
+	}
+
+	lowerDHCPIP := net.IPv4(nAddr[0], nAddr[1], nAddr[2], byte(100))
+	upperDHCPIP := net.IPv4(nAddr[0], nAddr[1], nAddr[2], byte(254))
+
+	log.Debugf("using %s for dhcp address", dhcpAddr)
+
+	hostOnlyNetwork, err := getOrCreateHostOnlyNetwork(
+		ip,
+		network.Mask,
+		dhcpAddr,
+		lowerDHCPIP,
+		upperDHCPIP,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if err := vbm("modifyvm", machineName,
+		"--nic2", "hostonly",
+		"--nictype2", "82540EM",
+		"--hostonlyadapter2", hostOnlyNetwork.Name,
+		"--cableconnected2", "on"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // createDiskImage makes a disk image at dest with the given size in MB. If r is
@@ -687,4 +734,27 @@ func setPortForwarding(machine string, interfaceNum int, mapName, protocol strin
 		return -1, err
 	}
 	return actualHostPort, nil
+}
+
+// getRandomIPinSubnet returns a pseudo-random net.IP in the same
+// subnet as the IP passed
+func getRandomIPinSubnet(baseIP net.IP) (net.IP, error) {
+	var dhcpAddr net.IP
+
+	nAddr := baseIP.To4()
+	// select pseudo-random DHCP addr; make sure not to clash with the host
+	// only try 5 times and bail if no random received
+	for i := 0; i < 5; i++ {
+		n := rand.Intn(25)
+		if byte(n) != nAddr[3] {
+			dhcpAddr = net.IPv4(nAddr[0], nAddr[1], nAddr[2], byte(1))
+			break
+		}
+	}
+
+	if dhcpAddr == nil {
+		return nil, ErrUnableToGenerateRandomIP
+	}
+
+	return dhcpAddr, nil
 }

@@ -55,7 +55,7 @@ func newCertificate(org string) (*x509.Certificate, error) {
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 		BasicConstraintsValid: true,
 	}, nil
 
@@ -72,6 +72,8 @@ func GenerateCACertificate(certFile, keyFile, org string, bits int) error {
 
 	template.IsCA = true
 	template.KeyUsage |= x509.KeyUsageCertSign
+	template.KeyUsage |= x509.KeyUsageKeyEncipherment
+	template.KeyUsage |= x509.KeyUsageKeyAgreement
 
 	priv, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
@@ -121,7 +123,6 @@ func GenerateCert(hosts []string, certFile, keyFile, caFile, caKeyFile, org stri
 		for _, h := range hosts {
 			if ip := net.ParseIP(h); ip != nil {
 				template.IPAddresses = append(template.IPAddresses, ip)
-
 			} else {
 				template.DNSNames = append(template.DNSNames, h)
 			}
@@ -131,13 +132,11 @@ func GenerateCert(hosts []string, certFile, keyFile, caFile, caKeyFile, org stri
 	tlsCert, err := tls.LoadX509KeyPair(caFile, caKeyFile)
 	if err != nil {
 		return err
-
 	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return err
-
 	}
 
 	x509Cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
@@ -153,7 +152,6 @@ func GenerateCert(hosts []string, certFile, keyFile, caFile, caKeyFile, org stri
 	certOut, err := os.Create(certFile)
 	if err != nil {
 		return err
-
 	}
 
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
@@ -162,7 +160,6 @@ func GenerateCert(hosts []string, certFile, keyFile, caFile, caKeyFile, org stri
 	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
-
 	}
 
 	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})

@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/docker/machine/log"
+	"github.com/docker/machine/utils"
 	"github.com/docker/machine/version"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
@@ -31,7 +33,7 @@ type Client interface {
 	StopInstance(d *Driver) error
 	RestartInstance(d *Driver) error
 	DeleteInstance(d *Driver) error
-	WaitForInstanceStatus(d *Driver, status string, timeout int) error
+	WaitForInstanceStatus(d *Driver, status string) error
 	GetInstanceIpAddresses(d *Driver) ([]IpAddress, error)
 	CreateKeyPair(d *Driver, name string, publicKey string) error
 	DeleteKeyPair(d *Driver, name string) error
@@ -52,10 +54,11 @@ type GenericClient struct {
 
 func (c *GenericClient) CreateInstance(d *Driver) (string, error) {
 	serverOpts := servers.CreateOpts{
-		Name:           d.MachineName,
-		FlavorRef:      d.FlavorId,
-		ImageRef:       d.ImageId,
-		SecurityGroups: d.SecurityGroups,
+		Name:             d.MachineName,
+		FlavorRef:        d.FlavorId,
+		ImageRef:         d.ImageId,
+		SecurityGroups:   d.SecurityGroups,
+		AvailabilityZone: d.AvailabilityZone,
 	}
 	if d.NetworkId != "" {
 		serverOpts.Networks = []servers.Network{
@@ -132,11 +135,23 @@ func (c *GenericClient) DeleteInstance(d *Driver) error {
 	return nil
 }
 
-func (c *GenericClient) WaitForInstanceStatus(d *Driver, status string, timeout int) error {
-	if err := servers.WaitForStatus(c.Compute, d.MachineId, status, timeout); err != nil {
-		return err
-	}
-	return nil
+func (c *GenericClient) WaitForInstanceStatus(d *Driver, status string) error {
+	return utils.WaitForSpecificOrError(func() (bool, error) {
+		current, err := servers.Get(c.Compute, d.MachineId).Extract()
+		if err != nil {
+			return true, err
+		}
+
+		if current.Status == "ERROR" {
+			return true, fmt.Errorf("Instance creation failed. Instance is in ERROR state")
+		}
+
+		if current.Status == status {
+			return true, nil
+		}
+
+		return false, nil
+	}, 50, 4*time.Second)
 }
 
 func (c *GenericClient) GetInstanceIpAddresses(d *Driver) ([]IpAddress, error) {

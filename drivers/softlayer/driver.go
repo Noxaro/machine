@@ -11,7 +11,6 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/log"
-	"github.com/docker/machine/provider"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 )
@@ -99,10 +98,6 @@ func (d *Driver) GetSSHUsername() string {
 	return d.SSHUser
 }
 
-func (d *Driver) GetProviderType() provider.ProviderType {
-	return provider.Remote
-}
-
 func GetCreateFlags() []cli.Flag {
 	// Set hourly billing to true by default since codegangsta cli doesn't take default bool values
 	if os.Getenv("SOFTLAYER_HOURLY_BILLING") == "" {
@@ -148,8 +143,8 @@ func GetCreateFlags() []cli.Flag {
 		cli.StringFlag{
 			EnvVar: "SOFTLAYER_HOSTNAME",
 			Name:   "softlayer-hostname",
-			Usage:  "hostname for the machine",
-			Value:  "docker",
+			Usage:  "hostname for the machine - defaults to machine name",
+			Value:  "",
 		},
 		cli.StringFlag{
 			EnvVar: "SOFTLAYER_DOMAIN",
@@ -200,9 +195,6 @@ func GetCreateFlags() []cli.Flag {
 }
 
 func validateDeviceConfig(c *deviceConfig) error {
-	if c.Hostname == "" {
-		return fmt.Errorf("Missing required setting - --softlayer-hostname")
-	}
 	if c.Domain == "" {
 		return fmt.Errorf("Missing required setting - --softlayer-domain")
 	}
@@ -275,6 +267,11 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		PublicVLAN:    flags.Int("softlayer-public-vlan-id"),
 		PrivateVLAN:   flags.Int("softlayer-private-vlan-id"),
 	}
+
+	if d.deviceConfig.Hostname == "" {
+		d.deviceConfig.Hostname = d.GetMachineName()
+	}
+
 	return validateDeviceConfig(d.deviceConfig)
 }
 

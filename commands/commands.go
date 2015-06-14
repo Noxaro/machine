@@ -167,8 +167,14 @@ var sharedCreateFlags = []cli.Flag{
 		),
 		Value: "none",
 	},
+	cli.StringFlag{
+		Name:   "engine-install-url",
+		Usage:  "Custom URL to use for engine installation",
+		Value:  "https://get.docker.com",
+		EnvVar: "MACHINE_DOCKER_INSTALL_URL",
+	},
 	cli.StringSliceFlag{
-		Name:  "engine-flag",
+		Name:  "engine-opt",
 		Usage: "Specify arbitrary flags to include with the created engine in the form flag=value",
 		Value: &cli.StringSlice{},
 	},
@@ -195,6 +201,12 @@ var sharedCreateFlags = []cli.Flag{
 		Name:  "swarm",
 		Usage: "Configure Machine with Swarm",
 	},
+	cli.StringFlag{
+		Name:   "swarm-image",
+		Usage:  "Specify Docker image to use for Swarm",
+		Value:  "swarm:latest",
+		EnvVar: "MACHINE_SWARM_IMAGE",
+	},
 	cli.BoolFlag{
 		Name:  "swarm-master",
 		Usage: "Configure Machine to be a Swarm master",
@@ -203,6 +215,16 @@ var sharedCreateFlags = []cli.Flag{
 		Name:  "swarm-discovery",
 		Usage: "Discovery service to use with Swarm",
 		Value: "",
+	},
+	cli.StringFlag{
+		Name:  "swarm-strategy",
+		Usage: "Define a default scheduling strategy for Swarm",
+		Value: "spread",
+	},
+	cli.StringSliceFlag{
+		Name:  "swarm-opt",
+		Usage: "Define arbitrary flags for swarm",
+		Value: &cli.StringSlice{},
 	},
 	cli.StringFlag{
 		Name:  "swarm-host",
@@ -294,6 +316,11 @@ var Commands = []cli.Command{
 				Name:  "quiet, q",
 				Usage: "Enable quiet mode",
 			},
+			cli.StringSliceFlag{
+				Name:  "filter",
+				Usage: "Filter output based on conditions provided",
+				Value: &cli.StringSlice{},
+			},
 		},
 		Name:   "ls",
 		Usage:  "List machines",
@@ -334,6 +361,18 @@ var Commands = []cli.Command{
 		Usage:       "Log into or run a command on a machine with SSH.",
 		Description: "Arguments are [machine-name] [command]",
 		Action:      cmdSsh,
+	},
+	{
+		Name:        "scp",
+		Usage:       "Copy files between machines",
+		Description: "Arguments are [machine:][path] [machine:][path].",
+		Action:      cmdScp,
+		Flags: []cli.Flag{
+			cli.BoolFlag{
+				Name:  "recursive, r",
+				Usage: "Copy files recursively (required to copy directories)",
+			},
+		},
 	},
 	{
 		Name:        "start",
@@ -614,14 +653,18 @@ func getCertPathInfo(c *cli.Context) libmachine.CertPathInfo {
 }
 
 func detectShell() (string, error) {
-	// attempt to get the SHELL env var
-	shell := filepath.Base(os.Getenv("SHELL"))
-	// none detected; check for windows env and not bash (i.e. msysgit, etc)
-	if runtime.GOOS == "windows" && shell == "" {
+	// check for windows env and not bash (i.e. msysgit, etc)
+	// the SHELL env var is not set for processes in msysgit; we check
+	// for TERM instead
+	if runtime.GOOS == "windows" && os.Getenv("TERM") != "cygwin" {
 		log.Printf("On Windows, please specify either 'cmd' or 'powershell' with the --shell flag.\n\n")
 		return "", ErrUnknownShell
 	}
 
+	// attempt to get the SHELL env var
+	shell := filepath.Base(os.Getenv("SHELL"))
+
+	log.Debugf("shell: %s", shell)
 	if shell == "" {
 		return "", ErrUnknownShell
 	}

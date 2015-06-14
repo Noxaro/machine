@@ -3,25 +3,24 @@ package oneandone
 import (
 	"bytes"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
-	"github.com/docker/machine/provider"
+	"github.com/docker/machine/log"
 	"github.com/docker/machine/state"
+	oaocs "github.com/jlusiardi/oneandone-cloudserver-api"
 	gossh "golang.org/x/crypto/ssh"
 	"path/filepath"
 	"strconv"
-	oaocs "github.com/jlusiardi/oneandone-cloudserver-api"
 )
 
 const (
-	minCores          = 1
-	maxCores          = 16
-	minRam            = 1
-	maxRam            = 128
-	minSsd            = 20
-	maxSsd            = 500
-	stepSsd           = 20
+	minCores = 1
+	maxCores = 16
+	minRam   = 1
+	maxRam   = 128
+	minSsd   = 20
+	maxSsd   = 500
+	stepSsd  = 20
 )
 
 const Endpoint string = ""
@@ -90,7 +89,7 @@ func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
 func (d *Driver) Create() error {
 	log.Infof("Creating a new 1&1 CloudServer ...")
 	api := oaocs.New(d.AccessToken, Endpoint)
-		
+
 	in := oaocs.ServerCreateData{}
 	in.Name = d.MachineName
 	in.Description = d.MachineName + " created by docker machine"
@@ -104,7 +103,7 @@ func (d *Driver) Create() error {
 	hdd.IsMain = true
 	hdd.Size = d.Ssd
 	hw.Hdds = []oaocs.Hdd{hdd}
-	/*server := */api.CreateServer(in)
+	/*server := */ api.CreateServer(in)
 
 	return nil
 }
@@ -115,10 +114,6 @@ func (d *Driver) GetIP() (string, error) {
 
 func (d *Driver) GetMachineName() string {
 	return d.MachineName
-}
-
-func (d *Driver) GetProviderType() provider.ProviderType {
-	return provider.Remote
 }
 
 func (d *Driver) GetSSHHostname() (string, error) {

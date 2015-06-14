@@ -1,12 +1,18 @@
 package oneandone_cloudserver_api
 
 import (
-	log "github.com/Sirupsen/logrus"
+	"github.com/docker/machine/log"
+	"net/http"
 )
 
+// Struct to describe a ISO image that can be used to boot a server.
+//
+// Values of this type describe ISO images that can be inserted into the servers virtual DVD drive.
+//
+//
 type DvdIso struct {
-	withId
-	withName
+	Id           string `json:"id"`
+	Name         string `json:"name"`
 	OsFamily     string `json:"os_family"`
 	Os           string `json:"os"`
 	OsVersion    string `json:"os_version"`
@@ -16,25 +22,27 @@ type DvdIso struct {
 }
 
 // GET /dvd_isos
-func (api *API) GetDvdIsos() []DvdIso {
+func (api *API) GetDvdIsos() ([]DvdIso, error) {
 	log.Debug("requesting information about dvd isos")
-	session := api.prepareSession()
-	res := []DvdIso{}
-	resp, _ := session.Get(createUrl(api, "dvd_isos"), nil, &res, nil)
-	logResult(resp, 200)
-	for index, _ := range res {
-		res[index].api = api
+	result := []DvdIso{}
+	err := api.Client.Get(createUrl(api, "dvd_isos"), &result, http.StatusOK)
+	if err != nil {
+		return nil, err
 	}
-	return res
+	for index, _ := range result {
+		result[index].api = api
+	}
+	return result, nil
 }
 
 // GET /dvd_isos/{id}
-func (api *API) GetDvdIso(Id string) DvdIso {
+func (api *API) GetDvdIso(Id string) (*DvdIso, error) {
 	log.Debug("requesting information about dvd iso", Id)
-	session := api.prepareSession()
-	res := DvdIso{}
-	resp, _ := session.Get(createUrl(api, "dvd_isos", Id), nil, &res, nil)
-	logResult(resp, 200)
-	res.api = api
-	return res
+	result := new(DvdIso)
+	err := api.Client.Get(createUrl(api, "dvd_isos", Id), &result, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	result.api = api
+	return result, nil
 }

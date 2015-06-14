@@ -1,15 +1,15 @@
 package oneandone_cloudserver_api
 
-import (
-	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/jmcvetta/napping"
-	"net/http"
-)
+import ()
 
+// Struct to hold the required information for accessing the API.
+//
+// Instances of this type contain the URL of the endpoint to access the API as well as the API access token to be used.
+// They offer also all methods that allow to access the various objects that are returned by top level resources of
+// the API.
 type API struct {
-	AuthToken string
-	Endpoint  string
+	Endpoint string
+	Client   *RestClient
 }
 
 type withApi struct {
@@ -32,42 +32,48 @@ type withDescription struct {
 	Description string `json:"description"`
 }
 
+const (
+	PublicIpPathSegment = "public_ips"
+	SharedStoragesPathSegment = "shared_storages"
+	PrivateNetworksPathSegment = "private_networks"
+)
+
+// Struct to hold the status of an API object.
+//
+// Values of this type are used to represent the status of API objects like servers, firewall policies and the like.
+//
+// The value of the "State" field can represent fixed states like "ACTIVE" or "POWERED_ON" but also transitional
+// states like "POWERING_ON" or "CONFIGURING".
+//
+// For fixed states the "Percent" field is empty where as for transitional states it contains the progress of the
+// transition in percent.
 type Status struct {
 	State   string `json:"state"`
-	Percent string `json:"percent"`
+	Percent int `json:"percent"`
 }
 
+type errorResponse struct {
+	Type    string `json:"Type"`
+	Message string `json:"Message"`
+	// TODO Errors is missing by intention due to unclear meaning
+}
+
+// Creates a new API instance.
+//
+// Explanations about given token and url information can be found online under the following url TODO add url!
 func New(token string, url string) *API {
 	api := new(API)
-	api.AuthToken = token
 	api.Endpoint = url
+	api.Client = NewRestClient(token)
 	return api
 }
 
-func (api *API) prepareSession() *napping.Session {
-	s := new(napping.Session)
-	h := &http.Header{}
-	h.Set("X_TOKEN", api.AuthToken)
-	s.Header = h
-	return s
-}
-
-func logResult(response *napping.Response, expectedStatus int) {
-	if response != nil {
-		log.Debug("response Status:", response.Status())
-		if response.Status() != expectedStatus {
-			log.Debug("response:", response.RawText())
-			log.Debug("response Headers:", response.HttpResponse().Header)
-		}
-	} else {
-		log.Info("No response was given")
-	}
-}
-
-func createUrl(api *API, sections ...interface{}) string {
-	url := api.Endpoint
-	for _, section := range sections {
-		url += "/" + fmt.Sprint(section)
-	}
-	return url
+// Function to convert a given integer value into a pointer to the same value.
+//
+// This function is used to be able to define ports with the CreateFirewallPolicy function and the definition of ports
+// in the FirewallPolicyCreateData struct.
+func Int2Pointer(input int) *int {
+	result := new(int)
+	*result = input
+	return result
 }

@@ -154,6 +154,10 @@
 		{
 			"ImportPath": "google.golang.org/api/googleapi",
 			"Rev": "aa91ac681e18e52b1a0dfe29b9d8354e88c0dcf5"
+		},
+		{
+			"ImportPath": "github.com/jlusiardi/oneandone-cloudserver-api",
+			"Rev": "3815269711982d2aa7fbb75f1f6920573e1d8f25"
 		}
 	]
 }

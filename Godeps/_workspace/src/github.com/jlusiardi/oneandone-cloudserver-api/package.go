@@ -1,6 +1,12 @@
+/*
+ * Copyright 2015 1&1 Internet AG, http://1und1.de . All rights reserved. Licensed under the Apache v2 License.
+ */
+
 package oneandone_cloudserver_api
 
-import ()
+import (
+	"sort"
+)
 
 // Struct to hold the required information for accessing the API.
 //
@@ -33,8 +39,8 @@ type withDescription struct {
 }
 
 const (
-	PublicIpPathSegment = "public_ips"
-	SharedStoragesPathSegment = "shared_storages"
+	PublicIpPathSegment        = "public_ips"
+	SharedStoragesPathSegment  = "shared_storages"
 	PrivateNetworksPathSegment = "private_networks"
 )
 
@@ -49,7 +55,7 @@ const (
 // transition in percent.
 type Status struct {
 	State   string `json:"state"`
-	Percent int `json:"percent"`
+	Percent int    `json:"percent"`
 }
 
 type errorResponse struct {
@@ -76,4 +82,28 @@ func Int2Pointer(input int) *int {
 	result := new(int)
 	*result = input
 	return result
+}
+
+// Function to get the keys of an map with string keys
+//
+// Returns the keys as string array. The function is nil save.
+func getMapKeysString(iMap map[string]int) ([]string) {
+	res := []string{}
+	for index, _ := range iMap {
+		res = append(res, index)
+	}
+	sort.Sort(sort.StringSlice(res))
+	return res
+}
+
+// Function to get the keys of an map with int keys
+//
+// Returns the keys as int array. The function is nil save.
+func getMapKeysInt(iMap map[int]int) ([]int) {
+	res := []int{}
+	for index, _ := range iMap {
+		res = append(res, index)
+	}
+	sort.Sort(sort.IntSlice(res))
+	return res
 }

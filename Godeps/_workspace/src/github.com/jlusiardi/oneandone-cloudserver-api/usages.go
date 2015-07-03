@@ -4,16 +4,6 @@
 
 package oneandone_cloudserver_api
 
-import (
+import ()
 
-)
-
-// GET /images
-
-// POST /images
-
-// GET /images/{id}
-
-// DELETE /images/{id}
-
-// PUT /images/{id}
+// GET /usages

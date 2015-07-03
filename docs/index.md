@@ -47,12 +47,12 @@ Docker Machine is supported on Windows, OS X, and Linux and is installable as on
 standalone binary. The links to the binaries for the various platforms and
 architectures are below:
 
-- [Windows - 32bit](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_windows-386.exe)
-- [Windows - 64bit](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_windows-amd64.exe)
-- [OSX - x86_64](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_darwin-amd64)
-- [OSX - (old macs)](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_darwin-386)
-- [Linux - x86_64](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_linux-amd64)
-- [Linux - i386](https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_linux-386)
+- [Windows - 32bit](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_windows-386.exe)
+- [Windows - 64bit](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_windows-amd64.exe)
+- [OSX - x86_64](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_darwin-amd64)
+- [OSX - (old macs)](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_darwin-386)
+- [Linux - x86_64](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_linux-amd64)
+- [Linux - i386](https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_linux-386)
 
 ### OS X and Linux
 
@@ -61,7 +61,7 @@ To install on OS X or Linux, download the proper binary to somewhere in your
 most OS X machines these commands should suffice:
 
 ```
-$ curl -L https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_darwin-amd64 > /usr/local/bin/docker-machine
+$ curl -L https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_darwin-amd64 > /usr/local/bin/docker-machine
 $ chmod +x /usr/local/bin/docker-machine
 ```
 
@@ -71,7 +71,7 @@ Now you should be able to check the version with `docker-machine -v`:
 
 ```
 $ docker-machine -v
-machine version 0.2.0
+machine version 0.3.0
 ```
 
 In order to run Docker commands on your machines without having to use SSH, make
@@ -102,14 +102,14 @@ $ curl -L https://get.docker.com/builds/Windows/x86_64/docker-latest.exe > /bin/
 Next, install the Docker Machine binary:
 
 ```
-$ curl -L https://github.com/docker/machine/releases/download/v0.2.0/docker-machine_windows-amd64.exe > /bin/docker-machine
+$ curl -L https://github.com/docker/machine/releases/download/v0.3.0/docker-machine_windows-amd64.exe > /bin/docker-machine
 ```
 
 Now running `docker-machine` should work.
 
 ```
 $ docker-machine -v
-machine version 0.2.0
+machine version 0.3.0
 ```
 
 ## Getting started with Docker Machine using a local VM
@@ -118,7 +118,7 @@ Let's take a look at using `docker-machine` for creating, using, and managing a
 Docker host inside of [VirtualBox](https://www.virtualbox.org/).
 
 First, ensure that
-[VirtualBox 4.3.26](https://www.virtualbox.org/wiki/Downloads) is correctly
+[VirtualBox 4.3.28](https://www.virtualbox.org/wiki/Downloads) is correctly
 installed on your system.
 
 If you run the `docker-machine ls` command to show all available machines, you will see
@@ -140,16 +140,20 @@ daemon installed, and will create and start a VirtualBox VM with Docker running.
 
 ```
 $ docker-machine create --driver virtualbox dev
-INFO[0001] Downloading boot2docker.iso to /home/<your username>/.docker/machine/cache/boot2docker.iso...
-INFO[0011] Creating SSH key...
-INFO[0012] Creating VirtualBox VM...
-INFO[0019] Starting VirtualBox VM...
-INFO[0020] Waiting for VM to start...
-INFO[0053] To see how to connect Docker to this machine, run: docker-machine env dev"
+Creating CA: /home/username/.docker/machine/certs/ca.pem
+Creating client certificate: /home/username/.docker/machine/certs/cert.pem
+Image cache does not exist, creating it at /home/username/.docker/machine/cache...
+No default boot2docker iso found locally, downloading the latest release...
+Downloading https://github.com/boot2docker/boot2docker/releases/download/v1.6.2/boot2docker.iso to /home/username/.docker/machine/cache/boot2docker.iso...
+Creating VirtualBox VM...
+Creating SSH key...
+Starting VirtualBox VM...
+Starting VM...
+To see how to connect Docker to this machine, run: docker-machine env dev
 ```
 
-You can see the machine you have created by running the `docker-machine ls` command
-again:
+You can see the machine you have created by running the `docker-machine ls`
+command again:
 
 ```
 $ docker-machine ls
@@ -157,9 +161,9 @@ NAME   ACTIVE   DRIVER       STATE     URL                         SWARM
 dev             virtualbox   Running   tcp://192.168.99.100:2376
 ```
 
-Next, as noted in the output of the `docker-machine create` command, we have to tell
-Docker to talk to that machine. You can do this with the `docker-machine env`
-command. For example,
+Next, as noted in the output of the `docker-machine create` command, we have to
+tell Docker to talk to that machine. You can do this with the `docker-machine
+env` command. For example,
 
 ```
 $ eval "$(docker-machine env dev)"
@@ -204,7 +208,7 @@ Any exposed ports are available on the Docker host’s IP address, which you can
 get using the `docker-machine ip` command:
 
 ```
-$ docker-machine ip
+$ docker-machine ip dev
 192.168.99.100
 ```
 
@@ -297,11 +301,9 @@ $ docker-machine create \
     --driver digitalocean \
     --digitalocean-access-token 0ab77166d407f479c6701652cee3a46830fef88b8199722b87821621736ab2d4 \
     staging
-INFO[0000] Creating SSH key...
-INFO[0000] Creating Digital Ocean droplet...
-INFO[0002] Waiting for SSH...
-INFO[0085] "staging" has been created.
-INFO[0085] To see how to connect Docker to this machine, run: docker-machine env staging"
+Creating SSH key...
+Creating Digital Ocean droplet...
+To see how to connect Docker to this machine, run: docker-machine env staging
 ```
 
 For convenience, `docker-machine` will use sensible defaults for choosing
@@ -465,12 +467,16 @@ Create a machine.
 
 ```
 $ docker-machine create --driver virtualbox dev
-INFO[0001] Downloading boot2docker.iso to /home/ehazlett/.docker/machine/cache/boot2docker.iso...
-INFO[0000] Creating SSH key...
-INFO[0000] Creating VirtualBox VM...
-INFO[0007] Starting VirtualBox VM...
-INFO[0007] Waiting for VM to start...
-INFO[0038] To see how to connect Docker to this machine, run: docker-machine env dev
+Creating CA: /home/username/.docker/machine/certs/ca.pem
+Creating client certificate: /home/username/.docker/machine/certs/cert.pem
+Image cache does not exist, creating it at /home/username/.docker/machine/cache...
+No default boot2docker iso found locally, downloading the latest release...
+Downloading https://github.com/boot2docker/boot2docker/releases/download/v1.6.2/boot2docker.iso to /home/username/.docker/machine/cache/boot2docker.iso...
+Creating VirtualBox VM...
+Creating SSH key...
+Starting VirtualBox VM...
+Starting VM...
+To see how to connect Docker to this machine, run: docker-machine env dev
 ```
 
 ##### Filtering create flags by driver in the help text
@@ -803,8 +809,6 @@ Show help text.
 Get the IP address of one or more machines.
 
 ```
-$ docker-machine ip
-192.168.99.104
 $ docker-machine ip dev
 192.168.99.104
 $ docker-machine ip dev dev2
@@ -872,9 +876,9 @@ dev             virtualbox   Stopped
 Regenerate TLS certificates and update the machine with new certs.
 
 ```
-$ docker-machine regenerate-certs
+$ docker-machine regenerate-certs dev
 Regenerate TLS machine certs?  Warning: this is irreversible. (y/n): y
-INFO[0013] Regenerating TLS certificates
+Regenerating TLS certificates
 ```
 
 #### restart
@@ -883,8 +887,8 @@ Restart a machine. Oftentimes this is equivalent to
 `docker-machine stop; machine start`.
 
 ```
-$ docker-machine restart
-INFO[0005] Waiting for VM to start...
+$ docker-machine restart dev
+Waiting for VM to start...
 ```
 
 #### rm
@@ -1010,11 +1014,11 @@ local host's filesystem first (using `scp`'s `-3` flag).
 
 #### start
 
-Gracefully start a machine.
+Start a machine.
 
 ```
-$ docker-machine restart
-INFO[0005] Waiting for VM to start...
+$ docker-machine start dev
+Starting VM...
 ```
 
 #### stop
@@ -1041,11 +1045,11 @@ with the latest.
 
 ```
 $ docker-machine upgrade dev
-INFO[0000] Stopping machine to do the upgrade...
-INFO[0005] Upgrading machine dev...
-INFO[0006] Downloading latest boot2docker release to /tmp/store/cache/boot2docker.iso...
-INFO[0008] Starting machine back up...
-INFO[0008] Waiting for VM to start...
+Stopping machine to do the upgrade...
+Upgrading machine dev...
+Downloading latest boot2docker release to /home/username/.docker/machine/cache/boot2docker.iso...
+Starting machine back up...
+Waiting for VM to start...
 ```
 
 > **Note**: If you are using a custom boot2docker ISO specified using
@@ -1058,7 +1062,7 @@ INFO[0008] Waiting for VM to start...
 Get the URL of a host
 
 ```
-$ docker-machine url
+$ docker-machine url dev
 tcp://192.168.99.109:2376
 ```
 
@@ -1580,7 +1584,7 @@ Environment variables and default values:
 | `--vmwarevcloudair-docker-port`   | `VCLOUDAIR_DOCKER_PORT`   | `2376`                                     |
 
 #### VMware vSphere
-Creates machines on a [VMware vSphere](http://www.vmware.com/products/vsphere) Virtual Infrastructure. Requires a working vSphere (ESXi and optionally vCenter) installation. The vSphere driver depends on [`govc`](https://github.com/vmware/govmomi/tree/master/govc) (must be in path) and has been tested with [vmware/govmomi@`c848630`](https://github.com/vmware/govmomi/commit/c8486300bfe19427e4f3226e3b3eac067717ef17).
+Creates machines on a [VMware vSphere](http://www.vmware.com/products/vsphere) Virtual Infrastructure. The machine must have a working vSphere ESXi installation. You can use a paid license or free 60 day trial license. Your installation may also include an optional VCenter server. The vSphere driver depends on [`govc`](https://github.com/vmware/govmomi/tree/master/govc) (must be in path) and has been tested with [vmware/govmomi@`c848630`](https://github.com/vmware/govmomi/commit/c8486300bfe19427e4f3226e3b3eac067717ef17).
 
 Options:
 
@@ -1637,7 +1641,7 @@ To use a different base operating system on a remote provider, specify the
 provider's image flag and one of its available images. For example, to
 select a `debian-8-x64` image on DigitalOcean you would supply the following:
 
-    --digitalocean-image=debian-8-x64`
+    --digitalocean-image=debian-8-x64
 
 If you change the base image for a provider, you may also need to change
 the SSH user. For example, the default Red Hat AMI on EC2 expects the

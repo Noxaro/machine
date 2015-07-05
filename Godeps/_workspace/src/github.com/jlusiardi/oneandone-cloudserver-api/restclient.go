@@ -1,3 +1,7 @@
+/*
+ * Copyright 2015 1&1 Internet AG, http://1und1.de . All rights reserved. Licensed under the Apache v2 License.
+ */
+
 package oneandone_cloudserver_api
 
 import (
@@ -87,7 +91,7 @@ func isError(response *http.Response, expectedStatus int, err error) error {
 			log.Debug("JSON decode failed: ", err)
 		}
 
-		return &ApiError{response.StatusCode, errorResponse.Message}
+		return ApiError{response.StatusCode, errorResponse.Message}
 	} else {
 		// no response from API means generic error
 	}

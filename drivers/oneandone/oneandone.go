@@ -6,9 +6,11 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/log"
+	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 	oaocs "github.com/jlusiardi/oneandone-cloudserver-api"
 	gossh "golang.org/x/crypto/ssh"
+	"io/ioutil"
 	"path/filepath"
 	"strconv"
 )
@@ -26,8 +28,10 @@ const (
 const Endpoint string = ""
 
 type Driver struct {
+	Endpoint       string
 	AccessToken    string
 	VmId           string
+	FirewallId     string
 	MachineName    string
 	CaCertPath     string
 	PrivateKeyPath string
@@ -67,6 +71,11 @@ func GetCreateFlags() []cli.Flag {
 			Name:   "oneandone-ssd",
 			Usage:  "size of the SSD for the Docker Host in GB (" + strconv.Itoa(minSsd) + "-" + strconv.Itoa(maxSsd) + ", steps of " + strconv.Itoa(stepSsd) + ")",
 		},
+		cli.StringFlag{
+			EnvVar: "ONEANDONE_ENDPOINT",
+			Name:   "oneandone-endpoint",
+			Usage:  "",
+		},
 	}
 }
 
@@ -87,24 +96,103 @@ func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
 }
 
 func (d *Driver) Create() error {
-	log.Infof("Creating a new 1&1 CloudServer ...")
-	api := oaocs.New(d.AccessToken, Endpoint)
+	log.Infof("Creating a new 1&1 CloudServer ... %v", d.FirewallId)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
 
-	in := oaocs.ServerCreateData{}
-	in.Name = d.MachineName
-	in.Description = d.MachineName + " created by docker machine"
-	in.ApplianceId = "C14988A9ABC34EA64CD5AAC0D33ABCAF"
-	hw := oaocs.Hardware{}
-	in.Hardware = hw
-	hw.CoresPerProcessor = 1
-	hw.Vcores = d.Cores
-	hw.Ram = d.Ram
-	hdd := oaocs.Hdd{}
-	hdd.IsMain = true
-	hdd.Size = d.Ssd
-	hw.Hdds = []oaocs.Hdd{hdd}
-	/*server := */ api.CreateServer(in)
+	appliance, err := api.ServerApplianceFindNewest("Linux", "Debian", "Minimal", 64, true)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Auto-select appliance '%v' as base image", appliance.Name)
 
+	firewall, err := api.CreateFirewallPolicy(oaocs.FirewallPolicyCreateData{
+		Name:        d.MachineName + " created by docker machine",
+		Description: "Firewall policy create for docker machine " + d.MachineName,
+		Rules: []oaocs.FirewallPolicyRulesCreateData{
+			oaocs.FirewallPolicyRulesCreateData{
+				Protocol: "TCP",
+				PortFrom: oaocs.Int2Pointer(1),
+				PortTo:   oaocs.Int2Pointer(65535),
+				SourceIp: "0.0.0.0",
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	log.Debugf("create firewall policy with id '%v'", firewall.Id)
+	d.FirewallId = firewall.Id
+
+	server, err := api.CreateServer(oaocs.ServerCreateData{
+		Name:             d.MachineName,
+		Description:      d.MachineName + " created by docker machine",
+		ApplianceId:      appliance.Id,
+		FirewallPolicyId: d.FirewallId,
+		Hardware: oaocs.Hardware{
+			CoresPerProcessor: 1,
+			Vcores:            d.Cores,
+			Ram:               d.Ram,
+			Hdds: []oaocs.Hdd{
+				oaocs.Hdd{
+					IsMain: true,
+					Size:   d.Ssd,
+				},
+			},
+		},
+		PowerOn: true,
+	})
+
+	if err != nil {
+		d.cleanUp()
+		return err
+	}
+	d.VmId = server.Id
+
+	firewall.WaitForState("ACTIVE")
+	server.WaitForState("POWERED_ON")
+
+	server, _ = api.GetServer(d.VmId)
+	d.IPAddress = server.Ips[0].Ip
+
+	// create and install SSH key
+	log.Infof("Generating SSH key ...")
+	if err := ssh.GenerateSSHKey(d.GetSSHKeyPath()); err != nil {
+		return err
+	}
+	err = d.installSshKey(server.Password)
+	if err != nil {
+		d.cleanUp()
+		return err
+	}
+
+	return nil
+}
+
+func (d *Driver) cleanUp() {
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+
+	if d.FirewallId != "" {
+		firewall, _ := api.GetFirewallPolicy(d.FirewallId)
+		firewall.Delete()
+		firewall.WaitUntilDeleted()
+	}
+}
+
+func (d *Driver) installSshKey(password string) error {
+	fileBytes, err := ioutil.ReadFile(d.GetSSHKeyPath() + ".pub")
+	if err != nil {
+		return fmt.Errorf("Cannot read SSH public key: %v", err)
+	}
+	key := string(fileBytes)
+
+	client, err := getClient("root", d.IPAddress, password)
+	if err != nil {
+		return fmt.Errorf("Cannot create SSH client to connect to server: %v", err)
+	}
+	_, err = executeCmd(client, "mkdir -p ~/.ssh; chmod 700 ~/.ssh; echo \""+key+"\" >> ~/.ssh/authorized_keys")
+	if err != nil {
+		return fmt.Errorf("Cannot install SSH public key on server: %v", err)
+	}
 	return nil
 }
 
@@ -133,6 +221,28 @@ func (d *Driver) GetSSHUsername() string {
 }
 
 func (d *Driver) GetState() (state.State, error) {
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+	vm, err := api.GetServer(d.VmId)
+	if err != nil {
+		return state.None, err
+	}
+
+	switch vm.Status.State {
+	case "POWERING_ON":
+		return state.Starting, nil
+	case "REBOOTING":
+	case "POWERED_ON":
+		return state.Running, nil
+	case "POWERED_OFF":
+		return state.Stopped, nil
+	case "POWERING_OFF":
+		return state.Stopping, nil
+	case "REMOVING":
+	case "CONFIGURING":
+	case "DEPLOYING":
+		return state.Error, nil
+	}
+
 	return state.None, nil
 }
 
@@ -146,43 +256,100 @@ func (d *Driver) GetURL() (string, error) {
 
 func (d *Driver) Kill() error {
 	log.Infof("Killing the 1&1 CloudServer named '%s' ...", d.MachineName)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+	server, _ := api.GetServer(d.VmId)
+	server.Shutdown(true)
 	return nil
 }
 
 func (d *Driver) Remove() error {
 	log.Infof("Removing the 1&1 CloudServer named '%s' ...", d.MachineName)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+
+	// delete firewall (if still exists)
+	firewall, err := api.GetFirewallPolicy(d.FirewallId)
+	if err == nil {
+		firewall, err = firewall.Delete()
+		if err != nil {
+			log.Debugf("Deleting firewall caused error: %v", err)
+		}
+	} else {
+		log.Debugf("Finding firewall caused error: %v", err)
+	}
+
+	server, err := api.GetServer(d.VmId)
+	if err == nil {
+		server, err = server.Delete()
+		if err != nil {
+			log.Debugf("Deleting server caused error: %v", err)
+		}
+	} else {
+		log.Debugf("Finding server caused error: %v", err)
+	}
+
+	if firewall != nil {
+		firewall.WaitUntilDeleted()
+	}
+	if server != nil {
+		server.WaitUntilDeleted()
+	}
 	return nil
 }
 
 func (d *Driver) Start() error {
 	log.Infof("Starting the 1&1 CloudServer named '%s' ...", d.MachineName)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+	server, _ := api.GetServer(d.VmId)
+	server.Start()
 	return nil
 }
 
 func (d *Driver) Stop() error {
 	log.Infof("Stopping the 1&1 CloudServer named '%s' ...", d.MachineName)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+	server, _ := api.GetServer(d.VmId)
+	server.Shutdown(false)
 	return nil
 }
 
 func (d *Driver) Restart() error {
 	log.Infof("Restarting the 1&1 CloudServer named '%s' ...", d.MachineName)
+	api := oaocs.New(d.AccessToken, d.Endpoint)
+	server, _ := api.GetServer(d.VmId)
+	server.Reboot(false)
 	return nil
 }
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
+	d.Endpoint = flags.String("oneandone-endpoint")
+	if d.Endpoint == "" {
+		return fmt.Errorf("oneandone driver requires the --oneandone-endpoint option")
+	}
 	d.AccessToken = flags.String("oneandone-access-token")
 	if d.AccessToken == "" {
 		return fmt.Errorf("oneandone driver requires the --oneandone-access-token option")
 	}
 	d.Cores = flags.Int("oneandone-cores")
+	if d.Cores == 0 {
+		log.Debugf("no number of cores specified, use %v core", minCores)
+		d.Cores = minCores
+	}
 	if d.Cores < minCores || d.Cores > maxCores {
 		return fmt.Errorf("oneandone driver requires the --oneandone-cores option to be an integer (" + strconv.Itoa(minCores) + "-" + strconv.Itoa(maxCores) + ")")
 	}
 	d.Ram = flags.Int("oneandone-ram")
+	if d.Ram == 0 {
+		log.Debugf("no amount of RAM specified, use %v GB", minRam)
+		d.Ram = minRam
+	}
 	if d.Ram < minRam || d.Ram > maxRam {
 		return fmt.Errorf("oneandone driver requires the --oneandone-ram option to be an integer (" + strconv.Itoa(minRam) + "-" + strconv.Itoa(maxRam) + ")")
 	}
 	d.Ssd = flags.Int("oneandone-ssd")
+	if d.Ssd == 0 {
+		log.Debugf("no amount of SSD specified, use %v GB", minSsd)
+		d.Ssd = minSsd
+	}
 	if d.Ssd < minSsd || d.Ssd > maxSsd || (d.Ssd%stepSsd) != 0 {
 		return fmt.Errorf("oneandone driver requires the --oneandone-ssd option to be an integer (" + strconv.Itoa(minSsd) + "-" + strconv.Itoa(maxSsd) + ", steps of " + strconv.Itoa(stepSsd) + ")")
 	}

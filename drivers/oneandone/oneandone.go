@@ -99,7 +99,7 @@ func (d *Driver) Create() error {
 	log.Infof("Creating a new 1&1 CloudServer ... %v", d.FirewallId)
 	api := oaocs.New(d.AccessToken, d.Endpoint)
 
-	appliance, err := api.ServerApplianceFindNewest("Linux", "Debian", "Minimal", 64, true)
+	appliance, err := api.ServerApplianceFindNewest("Linux", "Ubuntu", "Minimal", 64, true)
 	if err != nil {
 		return err
 	}

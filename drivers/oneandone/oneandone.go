@@ -2,6 +2,7 @@ package oneandone
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
@@ -13,6 +14,8 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -24,8 +27,6 @@ const (
 	maxSsd   = 500
 	stepSsd  = 20
 )
-
-const Endpoint string = ""
 
 type Driver struct {
 	Endpoint       string
@@ -74,7 +75,7 @@ func GetCreateFlags() []cli.Flag {
 		cli.StringFlag{
 			EnvVar: "ONEANDONE_ENDPOINT",
 			Name:   "oneandone-endpoint",
-			Usage:  "",
+			Usage:  "the 1&1 dynamic cloud server rest api endpoint",
 		},
 	}
 }
@@ -97,17 +98,15 @@ func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
 
 func (d *Driver) Create() error {
 	log.Infof("Creating a new 1&1 CloudServer ... %v", d.FirewallId)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
 
-	appliance, err := api.ServerApplianceFindNewest("Linux", "Ubuntu", "Minimal", 64, true)
+	appliance, err := d.getAPI().ServerApplianceFindNewest("Linux", "Ubuntu", "Minimal", 64, true)
 	if err != nil {
 		return err
 	}
 	log.Debugf("Auto-select appliance '%v' as base image", appliance.Name)
-
-	firewall, err := api.CreateFirewallPolicy(oaocs.FirewallPolicyCreateData{
-		Name:        d.MachineName + " created by docker machine",
-		Description: "Firewall policy create for docker machine " + d.MachineName,
+	firewall, err := d.getAPI().CreateFirewallPolicy(oaocs.FirewallPolicyCreateData{
+		Name:        "[Docker Machine] " + d.MachineName,
+		Description: "Firewall policy for docker machine " + d.MachineName,
 		Rules: []oaocs.FirewallPolicyRulesCreateData{
 			oaocs.FirewallPolicyRulesCreateData{
 				Protocol: "TCP",
@@ -123,8 +122,8 @@ func (d *Driver) Create() error {
 	log.Debugf("create firewall policy with id '%v'", firewall.Id)
 	d.FirewallId = firewall.Id
 
-	server, err := api.CreateServer(oaocs.ServerCreateData{
-		Name:             d.MachineName,
+	server, err := d.getAPI().CreateServer(oaocs.ServerCreateData{
+		Name:             "[Docker Machine] " + d.MachineName,
 		Description:      d.MachineName + " created by docker machine",
 		ApplianceId:      appliance.Id,
 		FirewallPolicyId: d.FirewallId,
@@ -143,7 +142,7 @@ func (d *Driver) Create() error {
 	})
 
 	if err != nil {
-		d.cleanUp()
+		d.Remove()
 		return err
 	}
 	d.VmId = server.Id
@@ -151,7 +150,7 @@ func (d *Driver) Create() error {
 	firewall.WaitForState("ACTIVE")
 	server.WaitForState("POWERED_ON")
 
-	server, _ = api.GetServer(d.VmId)
+	server, _ = d.getAPI().GetServer(d.VmId)
 	d.IPAddress = server.Ips[0].Ip
 
 	// create and install SSH key
@@ -159,23 +158,35 @@ func (d *Driver) Create() error {
 	if err := ssh.GenerateSSHKey(d.GetSSHKeyPath()); err != nil {
 		return err
 	}
+	d.WaitForServerReady(server)
 	err = d.installSshKey(server.Password)
 	if err != nil {
-		d.cleanUp()
+		d.Remove()
 		return err
 	}
 
+	log.Infof("Sucessfully created a new 1&1 CloudServer with IP: '%s'", d.IPAddress)
 	return nil
 }
 
-func (d *Driver) cleanUp() {
-	api := oaocs.New(d.AccessToken, d.Endpoint)
+func (d *Driver) WaitForServerReady(server *oaocs.Server) error {
+	log.Infof("Waiting for SSH to get ready ...")
 
-	if d.FirewallId != "" {
-		firewall, _ := api.GetFirewallPolicy(d.FirewallId)
-		firewall.Delete()
-		firewall.WaitUntilDeleted()
+	sshPort, _ := d.GetSSHPort()
+	server.WaitForSSH(sshPort)
+
+	log.Infof("Waiting for package manager to get ready ...")
+	client, err := d.getClient(d.GetSSHUsername(), d.IPAddress, server.Password)
+	if err != nil {
+		errors.New("Failed to establish an ssh session to the server")
 	}
+	result, _ := executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
+	for !strings.Contains(result, "0") {
+		result, _ = executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
+		log.Debugf("Waiting for package manager to get ready. Retry in 5 sec ...")
+		time.Sleep(5 * time.Second)
+	}
+	return nil
 }
 
 func (d *Driver) installSshKey(password string) error {
@@ -185,7 +196,7 @@ func (d *Driver) installSshKey(password string) error {
 	}
 	key := string(fileBytes)
 
-	client, err := getClient("root", d.IPAddress, password)
+	client, err := d.getClient(d.GetSSHUsername(), d.IPAddress, password)
 	if err != nil {
 		return fmt.Errorf("Cannot create SSH client to connect to server: %v", err)
 	}
@@ -221,8 +232,7 @@ func (d *Driver) GetSSHUsername() string {
 }
 
 func (d *Driver) GetState() (state.State, error) {
-	api := oaocs.New(d.AccessToken, d.Endpoint)
-	vm, err := api.GetServer(d.VmId)
+	vm, err := d.getAPI().GetServer(d.VmId)
 	if err != nil {
 		return state.None, err
 	}
@@ -247,6 +257,27 @@ func (d *Driver) GetState() (state.State, error) {
 }
 
 func (d *Driver) PreCreateCheck() error {
+	//server name available
+	servers, serverErr := d.getAPI().GetServers()
+	if serverErr != nil {
+		return errors.New("Failed to validate that the server name is available")
+	}
+	for index, _ := range servers {
+		if servers[index].Name == "[Docker Machine] "+d.MachineName {
+			return errors.New("The given name is already in use")
+		}
+	}
+
+	//firewall policy name available
+	fwp, fwpErr := d.getAPI().GetFirewallPolicies()
+	if fwpErr != nil {
+		return errors.New("Failed to validate that the firewall policy name is available")
+	}
+	for index, _ := range fwp {
+		if fwp[index].Name == "[Docker Machine] "+d.MachineName {
+			return errors.New("The given name is already in use")
+		}
+	}
 	return nil
 }
 
@@ -256,18 +287,16 @@ func (d *Driver) GetURL() (string, error) {
 
 func (d *Driver) Kill() error {
 	log.Infof("Killing the 1&1 CloudServer named '%s' ...", d.MachineName)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
-	server, _ := api.GetServer(d.VmId)
+	server, _ := d.getAPI().GetServer(d.VmId)
 	server.Shutdown(true)
 	return nil
 }
 
 func (d *Driver) Remove() error {
 	log.Infof("Removing the 1&1 CloudServer named '%s' ...", d.MachineName)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
 
 	// delete firewall (if still exists)
-	firewall, err := api.GetFirewallPolicy(d.FirewallId)
+	firewall, err := d.getAPI().GetFirewallPolicy(d.FirewallId)
 	if err == nil {
 		firewall, err = firewall.Delete()
 		if err != nil {
@@ -277,7 +306,7 @@ func (d *Driver) Remove() error {
 		log.Debugf("Finding firewall caused error: %v", err)
 	}
 
-	server, err := api.GetServer(d.VmId)
+	server, err := d.getAPI().GetServer(d.VmId)
 	if err == nil {
 		server, err = server.Delete()
 		if err != nil {
@@ -298,24 +327,21 @@ func (d *Driver) Remove() error {
 
 func (d *Driver) Start() error {
 	log.Infof("Starting the 1&1 CloudServer named '%s' ...", d.MachineName)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
-	server, _ := api.GetServer(d.VmId)
+	server, _ := d.getAPI().GetServer(d.VmId)
 	server.Start()
 	return nil
 }
 
 func (d *Driver) Stop() error {
 	log.Infof("Stopping the 1&1 CloudServer named '%s' ...", d.MachineName)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
-	server, _ := api.GetServer(d.VmId)
+	server, _ := d.getAPI().GetServer(d.VmId)
 	server.Shutdown(false)
 	return nil
 }
 
 func (d *Driver) Restart() error {
 	log.Infof("Restarting the 1&1 CloudServer named '%s' ...", d.MachineName)
-	api := oaocs.New(d.AccessToken, d.Endpoint)
-	server, _ := api.GetServer(d.VmId)
+	server, _ := d.getAPI().GetServer(d.VmId)
 	server.Reboot(false)
 	return nil
 }
@@ -356,12 +382,13 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	return nil
 }
 
-func getClient(user string, ip string, password string) (*gossh.Client, error) {
+func (d *Driver) getClient(user string, ip string, password string) (*gossh.Client, error) {
 	sshConfig := &gossh.ClientConfig{
 		User: user,
 		Auth: []gossh.AuthMethod{gossh.Password(password)},
 	}
-	client, err := gossh.Dial("tcp", ip+":22", sshConfig)
+	sshPort, _ := d.GetSSHPort()
+	client, err := gossh.Dial("tcp", ip+":"+string(sshPort), sshConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -381,4 +408,8 @@ func executeCmd(client *gossh.Client, cmd string) (string, error) {
 		return "", err
 	}
 	return b.String(), err
+}
+
+func (d *Driver) getAPI() *oaocs.API {
+	return oaocs.New(d.AccessToken, d.Endpoint)
 }

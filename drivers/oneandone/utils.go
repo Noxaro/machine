@@ -31,7 +31,8 @@ func getSSHClient(user string, ip string, port int, password string) (*gossh.Cli
 		User: user,
 		Auth: []gossh.AuthMethod{gossh.Password(password)},
 	}
-	client, err := gossh.Dial("tcp", ip+":"+string(port), sshConfig)
+	target := fmt.Sprintf("%v:%v", ip, port)
+	client, err := gossh.Dial("tcp", target, sshConfig)
 	if err != nil {
 		return nil, err
 	}

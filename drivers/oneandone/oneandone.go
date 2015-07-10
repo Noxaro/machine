@@ -175,7 +175,7 @@ func (d *Driver) WaitForServerReady(server *oaocs.Server) error {
 	log.Infof("Waiting for package manager to get ready ...")
 	client, err := getSSHClient(d.GetSSHUsername(), d.IPAddress, sshPort, server.Password)
 	if err != nil {
-		fmt.Errorf("Failed to establish an ssh session to the server")
+		return fmt.Errorf("Failed to establish an ssh session to the server")
 	}
 	result, _ := executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
 	for !strings.Contains(result, "0") {

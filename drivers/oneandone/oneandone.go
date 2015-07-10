@@ -1,8 +1,6 @@
 package oneandone
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/drivers"
@@ -10,7 +8,6 @@ import (
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 	oaocs "github.com/jlusiardi/oneandone-cloudserver-api"
-	gossh "golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
@@ -173,12 +170,12 @@ func (d *Driver) WaitForServerReady(server *oaocs.Server) error {
 	log.Infof("Waiting for SSH to get ready ...")
 
 	sshPort, _ := d.GetSSHPort()
-	server.WaitForSSH(sshPort)
+	WaitForTcpPortToBeOpen(d.IPAddress, sshPort)
 
 	log.Infof("Waiting for package manager to get ready ...")
-	client, err := d.getClient(d.GetSSHUsername(), d.IPAddress, server.Password)
+	client, err := getSSHClient(d.GetSSHUsername(), d.IPAddress, sshPort, server.Password)
 	if err != nil {
-		errors.New("Failed to establish an ssh session to the server")
+		fmt.Errorf("Failed to establish an ssh session to the server")
 	}
 	result, _ := executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
 	for !strings.Contains(result, "0") {
@@ -196,7 +193,8 @@ func (d *Driver) installSshKey(password string) error {
 	}
 	key := string(fileBytes)
 
-	client, err := d.getClient(d.GetSSHUsername(), d.IPAddress, password)
+	sshPort, _ := d.GetSSHPort()
+	client, err := getSSHClient(d.GetSSHUsername(), d.IPAddress, sshPort, password)
 	if err != nil {
 		return fmt.Errorf("Cannot create SSH client to connect to server: %v", err)
 	}
@@ -260,22 +258,22 @@ func (d *Driver) PreCreateCheck() error {
 	//server name available
 	servers, serverErr := d.getAPI().GetServers()
 	if serverErr != nil {
-		return errors.New("Failed to validate that the server name is available")
+		return fmt.Errorf("Failed to validate that the server name is available")
 	}
 	for index, _ := range servers {
 		if servers[index].Name == "[Docker Machine] "+d.MachineName {
-			return errors.New("The given name is already in use")
+			return fmt.Errorf("For the given name: '%s' already exists a 1&1 CloudServer", d.MachineName)
 		}
 	}
 
 	//firewall policy name available
 	fwp, fwpErr := d.getAPI().GetFirewallPolicies()
 	if fwpErr != nil {
-		return errors.New("Failed to validate that the firewall policy name is available")
+		return fmt.Errorf("Failed to validate that the firewall policy name is available")
 	}
 	for index, _ := range fwp {
 		if fwp[index].Name == "[Docker Machine] "+d.MachineName {
-			return errors.New("The given name is already in use")
+			return fmt.Errorf("For the given name: '%s' already exists a firewall policy", d.MachineName)
 		}
 	}
 	return nil
@@ -380,34 +378,6 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 		return fmt.Errorf("oneandone driver requires the --oneandone-ssd option to be an integer (" + strconv.Itoa(minSsd) + "-" + strconv.Itoa(maxSsd) + ", steps of " + strconv.Itoa(stepSsd) + ")")
 	}
 	return nil
-}
-
-func (d *Driver) getClient(user string, ip string, password string) (*gossh.Client, error) {
-	sshConfig := &gossh.ClientConfig{
-		User: user,
-		Auth: []gossh.AuthMethod{gossh.Password(password)},
-	}
-	sshPort, _ := d.GetSSHPort()
-	client, err := gossh.Dial("tcp", ip+":"+string(sshPort), sshConfig)
-	if err != nil {
-		return nil, err
-	}
-	return client, err
-}
-
-func executeCmd(client *gossh.Client, cmd string) (string, error) {
-	session, err := client.NewSession()
-	if err != nil {
-		log.Info(err)
-		return "", err
-	}
-	var b bytes.Buffer
-	session.Stdout = &b
-	err = session.Run(cmd)
-	if err != nil {
-		return "", err
-	}
-	return b.String(), err
 }
 
 func (d *Driver) getAPI() *oaocs.API {

@@ -25,6 +25,8 @@ const (
 	stepSsd  = 20
 )
 
+const Endpoint string = ""
+
 type Driver struct {
 	Endpoint       string
 	AccessToken    string
@@ -72,7 +74,7 @@ func GetCreateFlags() []cli.Flag {
 		cli.StringFlag{
 			EnvVar: "ONEANDONE_ENDPOINT",
 			Name:   "oneandone-endpoint",
-			Usage:  "the 1&1 dynamic cloud server rest api endpoint",
+			Usage:  "1&1 CloudServer rest api endpoint",
 		},
 	}
 }
@@ -258,7 +260,7 @@ func (d *Driver) PreCreateCheck() error {
 	//server name available
 	servers, serverErr := d.getAPI().GetServers()
 	if serverErr != nil {
-		return fmt.Errorf("Failed to validate that the server name is available")
+		return fmt.Errorf("Failed to validate that the server name is available: %v", serverErr)
 	}
 	for index, _ := range servers {
 		if servers[index].Name == "[Docker Machine] "+d.MachineName {
@@ -269,7 +271,7 @@ func (d *Driver) PreCreateCheck() error {
 	//firewall policy name available
 	fwp, fwpErr := d.getAPI().GetFirewallPolicies()
 	if fwpErr != nil {
-		return fmt.Errorf("Failed to validate that the firewall policy name is available")
+		return fmt.Errorf("Failed to validate that the firewall policy name is available: %v", fwpErr)
 	}
 	for index, _ := range fwp {
 		if fwp[index].Name == "[Docker Machine] "+d.MachineName {

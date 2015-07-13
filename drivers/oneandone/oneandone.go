@@ -204,14 +204,6 @@ func (d *Driver) GetSSHHostname() (string, error) {
 	return d.IPAddress, nil
 }
 
-func (d *Driver) GetSSHPort() (int, error) {
-	return 22, nil
-}
-
-func (d *Driver) GetSSHUsername() string {
-	return "root"
-}
-
 func (d *Driver) GetState() (state.State, error) {
 	vm, err := d.getAPI().GetServer(d.VmId)
 	if err != nil {

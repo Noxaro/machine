@@ -285,13 +285,6 @@ func (d *Driver) GetURL() (string, error) {
 	return fmt.Sprintf("tcp://%s:2376", d.IPAddress), nil
 }
 
-func (d *Driver) Kill() error {
-	log.Infof("Killing the 1&1 CloudServer named '%s' ...", d.MachineName)
-	server, _ := d.getAPI().GetServer(d.VmId)
-	server.Shutdown(true)
-	return nil
-}
-
 func (d *Driver) Remove() error {
 	log.Infof("Removing the 1&1 CloudServer named '%s' ...", d.MachineName)
 
@@ -327,22 +320,54 @@ func (d *Driver) Remove() error {
 
 func (d *Driver) Start() error {
 	log.Infof("Starting the 1&1 CloudServer named '%s' ...", d.MachineName)
-	server, _ := d.getAPI().GetServer(d.VmId)
-	server.Start()
+	server, getErr := d.getAPI().GetServer(d.VmId)
+	if getErr != nil {
+		return fmt.Errorf("Failed to start the 1&1 CloudServer: %v", getErr)
+	}
+	_, startErr := server.Start()
+	if startErr != nil {
+		return fmt.Errorf("Failed to start the 1&1 CloudServer: %v", startErr)
+	}
 	return nil
 }
 
 func (d *Driver) Stop() error {
 	log.Infof("Stopping the 1&1 CloudServer named '%s' ...", d.MachineName)
-	server, _ := d.getAPI().GetServer(d.VmId)
-	server.Shutdown(false)
+	server, getErr := d.getAPI().GetServer(d.VmId)
+	if getErr != nil {
+		return fmt.Errorf("Failed to stop the 1&1 CloudServer: %v", getErr)
+	}
+	_, stopErr := server.Shutdown(false)
+	if stopErr != nil {
+		return fmt.Errorf("Failed to stop the 1&1 CloudServer: %v", stopErr)
+	}
 	return nil
 }
 
 func (d *Driver) Restart() error {
 	log.Infof("Restarting the 1&1 CloudServer named '%s' ...", d.MachineName)
-	server, _ := d.getAPI().GetServer(d.VmId)
-	server.Reboot(false)
+	server, getErr := d.getAPI().GetServer(d.VmId)
+	if getErr != nil {
+		return fmt.Errorf("Failed to restart the 1&1 CloudServer: %v", getErr)
+	}
+	_, restartErr := server.Reboot(false)
+	if restartErr != nil {
+		return fmt.Errorf("Failed to restart the 1&1 CloudServer: %v", restartErr)
+	}
+	return nil
+}
+
+
+func (d *Driver) Kill() error {
+	log.Infof("Killing the 1&1 CloudServer named '%s' ...", d.MachineName)
+	server, getErr := d.getAPI().GetServer(d.VmId)
+	if getErr != nil {
+		return fmt.Errorf("Failed to kill the 1&1 CloudServer: %v", getErr)
+	}
+	_, killErr := server.Shutdown(true)
+	if killErr != nil {
+		return fmt.Errorf("Failed to kill the 1&1 CloudServer: %v", killErr)
+	}
 	return nil
 }
 

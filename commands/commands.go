@@ -89,7 +89,7 @@ func confirmInput(msg string) bool {
 	return false
 }
 
-func newMcn(store libmachine.Store) (*libmachine.Machine, error) {
+func newProvider(store libmachine.Store) (*libmachine.Provider, error) {
 	return libmachine.New(store)
 }
 
@@ -509,12 +509,12 @@ func loadMachine(name string, c *cli.Context) (*libmachine.Host, error) {
 		log.Fatal(err)
 	}
 
-	mcn, err := newMcn(defaultStore)
+	provider, err := newProvider(defaultStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	host, err := mcn.Get(name)
+	host, err := provider.Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -534,19 +534,19 @@ func getHost(c *cli.Context) *libmachine.Host {
 		log.Fatal(err)
 	}
 
-	mcn, err := newMcn(defaultStore)
+	provider, err := newProvider(defaultStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	host, err := mcn.Get(name)
+	host, err := provider.Get(name)
 	if err != nil {
 		log.Fatalf("unable to load host: %v", err)
 	}
 	return host
 }
 
-func getDefaultMcn(c *cli.Context) *libmachine.Machine {
+func getDefaultProvider(c *cli.Context) *libmachine.Provider {
 	certInfo := getCertPathInfo(c)
 	defaultStore, err := getDefaultStore(
 		c.GlobalString("storage-path"),
@@ -557,12 +557,12 @@ func getDefaultMcn(c *cli.Context) *libmachine.Machine {
 		log.Fatal(err)
 	}
 
-	mcn, err := newMcn(defaultStore)
+	provider, err := newProvider(defaultStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return mcn
+	return provider
 }
 
 func getMachineConfig(c *cli.Context) (*machineConfig, error) {
@@ -577,12 +577,12 @@ func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 		log.Fatal(err)
 	}
 
-	mcn, err := newMcn(defaultStore)
+	provider, err := newProvider(defaultStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	m, err := mcn.Get(name)
+	m, err := provider.Get(name)
 	if err != nil {
 		return nil, err
 	}

@@ -181,7 +181,7 @@ func (d *Driver) WaitForServerReady(server *oaocs.Server) error {
 		return fmt.Errorf("Failed to establish an ssh session to the server")
 	}
 
-	for isAptUpToDate(client) {
+	for !isAptUpToDate(client) {
 		log.Debug("Waiting for package manager to run update ...")
 		time.Sleep(5 * time.Second)
 	}
@@ -189,7 +189,7 @@ func (d *Driver) WaitForServerReady(server *oaocs.Server) error {
 	result, _ := executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
 	for !strings.Contains(result, "0") {
 		result, _ = executeCmd(client, "ps -C aptitude >/dev/null && echo 1 || echo 0")
-		log.Debugf("Waiting for package manager to get ready. Retry in 5 sec ...")
+		log.Debugf("Waiting for package manager to complete system update. Retry in 5 sec ...")
 		time.Sleep(5 * time.Second)
 	}
 	return nil

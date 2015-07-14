@@ -65,11 +65,11 @@ func executeCmd(client *gossh.Client, cmd string) (string, error) {
 func isAptUpToDate(client * gossh.Client) (bool) {
 	lastRunS, lastRunErr := executeCmd(client, "stat -c %Y /var/cache/apt/")
 	if lastRunErr != nil {
-		log.Infof("Failed to fetch last package manager run: %v", lastRunErr)
+		log.Errorf("Failed to fetch last package manager run: %v", lastRunErr)
 	}
 	currentTimeS, currentTimeErr := executeCmd(client, "date +%s")
 	if currentTimeErr != nil {
-		log.Infof("Failed to fetch last package manager run: %v", currentTimeErr)
+		log.Errorf("Failed to fetch last package manager run: %v", currentTimeErr)
 	}
 
 	var validTimestamp = regexp.MustCompile(`\d{10}`)
@@ -78,11 +78,11 @@ func isAptUpToDate(client * gossh.Client) (bool) {
 
 	lastRun, lastRunParseErr := strconv.Atoi(lastRunS)
 	if lastRunParseErr != nil {
-		log.Infof("Failed to parse last update run timestamp: %v", lastRunParseErr)
+		log.Errorf("Failed to parse last update run timestamp: %v", lastRunParseErr)
 	}
 	currentTime, currentTimeParseErr := strconv.Atoi(currentTimeS)
 	if currentTimeParseErr != nil {
-		log.Infof("Failed to parse current timestamp: %v", currentTimeParseErr)
+		log.Errorf("Failed to parse current timestamp: %v", currentTimeParseErr)
 	}
 
 	if (currentTime - lastRun) > 30 {

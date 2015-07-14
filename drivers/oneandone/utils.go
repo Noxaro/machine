@@ -6,6 +6,8 @@ import (
 	"github.com/docker/machine/log"
 	gossh "golang.org/x/crypto/ssh"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,4 +57,46 @@ func executeCmd(client *gossh.Client, cmd string) (string, error) {
 		return "", err
 	}
 	return b.String(), err
+}
+
+// Function to execute a SSH command with an integer result
+//
+// This function executes the given command on the server and return the int value of the result.
+// This function only accepts valid integers as output of the command.
+// So if the output contains characters it will return an pares error.
+func getIntValueFromSSHCommand(client *gossh.Client, command string) (int, error) {
+	result, err := executeCmd(client, command)
+	if err != nil {
+		return 0, err
+	}
+	value := strings.TrimSpace(result)
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, err
+	}
+	return intValue, nil
+}
+
+// Function to validate that the apt package manager is up to date
+//
+// This function validates that the apt package manager updates his cache within 30 seconds
+// To do this it will fetch the last change of the /var/cache/apt directory to ensure that the apt cache is up to date
+func isAptUpToDate(client *gossh.Client) bool {
+	//Command to get the last change to the directory as unix timestamp
+	lastRun, err := getIntValueFromSSHCommand(client, "stat -c %Y /var/cache/apt/")
+	if err != nil {
+		log.Errorf("Failed to get last apt run: %v", err)
+	}
+	//Get the current unix timestamp
+	currentTime, err := getIntValueFromSSHCommand(client, "date +%s")
+	if err != nil {
+		log.Errorf("Failed to get current timestamp: %v", err)
+	}
+
+	log.Debug(currentTime, lastRun, currentTime-lastRun)
+	diff := currentTime - lastRun
+	if diff < 30 {
+		return true
+	}
+	return false
 }

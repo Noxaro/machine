@@ -151,7 +151,10 @@ func (d *Driver) Create() error {
 	firewall.WaitForState("ACTIVE")
 	server.WaitForState("POWERED_ON")
 
-	server, _ = d.getAPI().GetServer(d.VmId)
+	server, err = d.getAPI().GetServer(d.VmId)
+	if err != nil {
+		return err
+	}
 	d.IPAddress = server.Ips[0].Ip
 
 	// create and install SSH key

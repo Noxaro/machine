@@ -104,6 +104,18 @@ func (d *Driver) Create() error {
 				PortTo:   oaocs.Int2Pointer(65535),
 				SourceIp: "0.0.0.0",
 			},
+			oaocs.FirewallPolicyRulesCreateData{
+				Protocol: "UDP",
+				PortFrom: oaocs.Int2Pointer(1),
+				PortTo: oaocs.Int2Pointer(65535),
+				SourceIp: "0.0.0.0",
+			},
+			oaocs.FirewallPolicyRulesCreateData{
+				Protocol: "ICMP",
+				PortFrom: nil,
+				PortTo: nil,
+				SourceIp: "0.0.0.0",
+			},
 		},
 	})
 	if err != nil {

@@ -7,6 +7,8 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"net"
 	"time"
+	"strconv"
+	"regexp"
 )
 
 // Function to perform busy-waiting for the selected TCP port to open on the first IP of the server.
@@ -55,4 +57,36 @@ func executeCmd(client *gossh.Client, cmd string) (string, error) {
 		return "", err
 	}
 	return b.String(), err
+}
+
+// Function to validate that the apt package manager is up to date
+//
+// This function validates that the apt package manager updates his cache within 30 seconds
+func isAptUpToDate(client * gossh.Client) (bool) {
+	lastRunS, lastRunErr := executeCmd(client, "stat -c %Y /var/cache/apt/")
+	if lastRunErr != nil {
+		log.Infof("Failed to fetch last package manager run: %v", lastRunErr)
+	}
+	currentTimeS, currentTimeErr := executeCmd(client, "date +%s")
+	if currentTimeErr != nil {
+		log.Infof("Failed to fetch last package manager run: %v", currentTimeErr)
+	}
+
+	var validTimestamp = regexp.MustCompile(`\d{10}`)
+	lastRunS = validTimestamp.FindString(lastRunS)
+	currentTimeS = validTimestamp.FindString(currentTimeS)
+
+	lastRun, lastRunParseErr := strconv.Atoi(lastRunS)
+	if lastRunParseErr != nil {
+		log.Infof("Failed to parse last update run timestamp: %v", lastRunParseErr)
+	}
+	currentTime, currentTimeParseErr := strconv.Atoi(currentTimeS)
+	if currentTimeParseErr != nil {
+		log.Infof("Failed to parse current timestamp: %v", currentTimeParseErr)
+	}
+
+	if (currentTime - lastRun) > 30 {
+		return true
+	}
+	return false
 }
